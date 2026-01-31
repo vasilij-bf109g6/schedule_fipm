@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Основные цвета -->
+    <color name="colorPrimary">#2196F3</color>
+    <color name="colorPrimaryDark">#1976D2</color>
+    <color name="colorAccent">#FF5722</color>
+
+    <color name="colorCurrentClass">#3AD453</color>      <!-- для текущей пары -->
+    <color name="colorPastClass">#E0E0E0</color>        <!-- Серый для прошедших пар -->
+    <color name="white">#FFFFFF</color>                 <!-- Белый для будущих пар -->
+
+    <!-- Цвета для дней недели -->
+    <color name="daySelected">#2196F3</color>           <!-- Синий для выбранного дня -->
+    <color name="dayToday">#4CAF50</color>              <!-- Зеленый для сегодняшнего дня -->
+    <color name="dayNormal">#757575</color>             <!-- Серый для обычных дней -->
+    <color name="background">#F5F5F5</color>
+    <color name="colorFutureClass">#E3F2FD</color>      <!-- Светло-голубой для будущих дней -->
+
+</resources>

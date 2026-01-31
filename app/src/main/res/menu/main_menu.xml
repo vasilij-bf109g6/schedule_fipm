@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/menu_refresh"
+        android:title="Обновить"
+        android:icon="@drawable/ic_refresh"
+        app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/menu_change_group"
+        android:title="Сменить группу"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/menu_view_other"
+        android:title="Посмотреть другие"
+        app:showAsAction="never" />
+
+    <!-- Добавим пункт для возврата к своей группе -->
+    <item
+        android:id="@+id/menu_return_to_my"
+        android:title="← Моя группа"
+        android:visible="false"
+        app:showAsAction="never" />
+
+</menu>

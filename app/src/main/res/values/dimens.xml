@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Размеры для кнопок дней недели -->
+    <dimen name="day_button_width">50dp</dimen>
+    <dimen name="day_button_height">50dp</dimen>
+    <dimen name="day_button_margin">4dp</dimen>
+
+    <!-- Общие размеры текста -->
+    <dimen name="text_small">12sp</dimen>
+    <dimen name="text_medium">14sp</dimen>
+    <dimen name="text_large">16sp</dimen>
+
+    <!-- Отступы -->
+    <dimen name="padding_small">8dp</dimen>
+    <dimen name="padding_medium">12dp</dimen>
+    <dimen name="padding_large">16dp</dimen>
+</resources>

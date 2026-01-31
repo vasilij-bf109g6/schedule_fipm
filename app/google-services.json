@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "666160750818",
+    "project_id": "schedule-fipm-a2352",
+    "storage_bucket": "schedule-fipm-a2352.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:666160750818:android:accec748ab3187567afebb",
+        "android_client_info": {
+          "package_name": "com.example.universityschedule"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD4kQQqOshtNPsJO43D_6v_EcUulAWPxZo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
