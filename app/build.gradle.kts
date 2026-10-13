@@ -20,7 +20,9 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            // R8 сжимает APK и вырезает отладочные логи (правила в proguard-rules.pro)
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -54,11 +56,12 @@ dependencies {
 
     // Корoutines для асинхронных операций
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.1")
+    // Task.await() для Firebase
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.7.1")
 
-    // Firebase зависимости (оставить если будете использовать позже)
+    // Firebase: Kotlin-API теперь в основном модуле, отдельные -ktx модули устарели
     implementation(platform("com.google.firebase:firebase-bom:32.7.0"))
     implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-firestore-ktx")
 
     // Тестирование
     testImplementation("junit:junit:4.13.2")
