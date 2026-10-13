@@ -18,11 +18,13 @@ import androidx.appcompat.app.AlertDialog
 import android.widget.Toast
 import android.content.Intent
 import android.content.SharedPreferences
+import android.content.res.ColorStateList
 import java.util.Date
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
 import android.widget.TextView
 import java.text.SimpleDateFormat
 import com.google.firebase.FirebaseApp
@@ -325,8 +327,12 @@ class MainActivity : AppCompatActivity() {
                 else -> continue
             }
 
-            // Обновляем круглую форму
-            button.background = ContextCompat.getDrawable(this, R.drawable.circle_background)
+            // Красим через tint, чтобы кнопка осталась круглой (setBackgroundColor заменял фон квадратом)
+            fun paint(backgroundRes: Int, textRes: Int, alpha: Float) {
+                ViewCompat.setBackgroundTintList(button, ColorStateList.valueOf(ContextCompat.getColor(this, backgroundRes)))
+                button.setTextColor(ContextCompat.getColor(this, textRes))
+                button.alpha = alpha
+            }
 
             // Определяем, является ли день сегодняшним (только на текущей неделе)
             val isToday = weekOffset == 0 && dayNumber == today
@@ -334,33 +340,23 @@ class MainActivity : AppCompatActivity() {
             when {
                 isToday && dayNumber == selectedDay -> {
                     // Сегодня и выбран
-                    button.setBackgroundColor(ContextCompat.getColor(this, R.color.daySelected))
-                    button.setTextColor(ContextCompat.getColor(this, android.R.color.white))
-                    button.alpha = 1.0f
+                    paint(R.color.daySelected, android.R.color.white, 1.0f)
                 }
                 isToday -> {
                     // Сегодня, но не выбран
-                    button.setBackgroundColor(ContextCompat.getColor(this, R.color.dayToday))
-                    button.setTextColor(ContextCompat.getColor(this, android.R.color.white))
-                    button.alpha = 1.0f
+                    paint(R.color.dayToday, android.R.color.white, 1.0f)
                 }
                 dayNumber == selectedDay -> {
                     // Выбран, но не сегодня
-                    button.setBackgroundColor(ContextCompat.getColor(this, R.color.daySelected))
-                    button.setTextColor(ContextCompat.getColor(this, android.R.color.white))
-                    button.alpha = 1.0f
+                    paint(R.color.daySelected, android.R.color.white, 1.0f)
                 }
                 weekOffset != 0 -> {
                     // День следующей недели
-                    button.setBackgroundColor(ContextCompat.getColor(this, android.R.color.white))
-                    button.setTextColor(ContextCompat.getColor(this, R.color.dayNormal))
-                    button.alpha = 0.6f  // Полупрозрачность для дней следующей недели
+                    paint(R.color.surface, R.color.dayNormal, 0.6f)  // Полупрозрачность для дней следующей недели
                 }
                 else -> {
                     // Обычный день текущей недели
-                    button.setBackgroundColor(ContextCompat.getColor(this, android.R.color.white))
-                    button.setTextColor(ContextCompat.getColor(this, R.color.dayNormal))
-                    button.alpha = 1.0f
+                    paint(R.color.surface, R.color.dayNormal, 1.0f)
                 }
             }
 
@@ -484,7 +480,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showStatus(text: String, colorRes: Int) {
         currentClassTextView.text = text
-        currentClassTextView.setBackgroundColor(ContextCompat.getColor(this, colorRes))
+        ViewCompat.setBackgroundTintList(currentClassTextView, ColorStateList.valueOf(ContextCompat.getColor(this, colorRes)))
         currentClassTextView.visibility = View.VISIBLE
     }
 
@@ -790,6 +786,11 @@ class MainActivity : AppCompatActivity() {
         // Сохраняем applicationContext для использования в методах
         private val appContext = context.applicationContext
 
+        // Tint сохраняет скругление и рамку card_background
+        private fun setCardColor(container: View, colorRes: Int) {
+            ViewCompat.setBackgroundTintList(container, ColorStateList.valueOf(ContextCompat.getColor(appContext, colorRes)))
+        }
+
         override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
             // Используем LayoutInflater из parent.context
             val view = convertView ?: LayoutInflater.from(parent.context)
@@ -832,10 +833,10 @@ class MainActivity : AppCompatActivity() {
                 subjectTextView.paintFlags =
                     subjectTextView.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
 
-                subjectTextView.setTextColor(Color.BLACK)
-                timeTextView.setTextColor(Color.BLACK)
-                roomTextView.setTextColor(Color.BLACK)
-                teacherTextView.setTextColor(Color.BLACK)
+                subjectTextView.setTextColor(ContextCompat.getColor(appContext, R.color.textPrimary))
+                timeTextView.setTextColor(ContextCompat.getColor(appContext, R.color.colorPrimary))
+                roomTextView.setTextColor(ContextCompat.getColor(appContext, R.color.textSecondary))
+                teacherTextView.setTextColor(ContextCompat.getColor(appContext, R.color.textSecondary))
                 container.alpha = 1f
             }
 
@@ -847,28 +848,20 @@ class MainActivity : AppCompatActivity() {
                 when (ScheduleLogic.timing(currentClass, now)) {
                     ClassTiming.CURRENT -> {
                         // Текущая пара - зеленый фон
-                        container.setBackgroundColor(
-                            ContextCompat.getColor(appContext, R.color.colorCurrentClass)
-                        )
+                        setCardColor(container, R.color.colorCurrentClass)
                     }
                     ClassTiming.PAST -> {
                         // Прошедшая пара - серый фон
-                        container.setBackgroundColor(
-                            ContextCompat.getColor(appContext, R.color.colorPastClass)
-                        )
+                        setCardColor(container, R.color.colorPastClass)
                     }
                     ClassTiming.FUTURE -> {
                         // Будущая пара - белый фон
-                        container.setBackgroundColor(
-                            ContextCompat.getColor(appContext, R.color.white)
-                        )
+                        setCardColor(container, R.color.surface)
                     }
                 }
             } else {
                 // Для других дней - белый фон
-                container.setBackgroundColor(
-                    ContextCompat.getColor(appContext, R.color.white)
-                )
+                setCardColor(container, R.color.surface)
             }
 
             return view

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Цвета для тёмной темы -->
+    <color name="colorCurrentClass">#2E7D32</color>
+    <color name="colorPastClass">#2C2C2C</color>
+    <color name="colorFutureClass">#1A3A5C</color>
+    <color name="dayNormal">#BDBDBD</color>
+
+    <color name="screenBackground">#121212</color>
+    <color name="surface">#1E1E1E</color>
+    <color name="strokeColor">#333333</color>
+    <color name="textPrimary">#EEEEEE</color>
+    <color name="textSecondary">#AAAAAA</color>
+</resources>

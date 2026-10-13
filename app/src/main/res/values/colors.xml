@@ -16,4 +16,11 @@
     <color name="background">#F5F5F5</color>
     <color name="colorFutureClass">#E3F2FD</color>      <!-- Светло-голубой для будущих дней -->
 
+    <!-- Фон и текст: тёмные варианты лежат в values-night/colors.xml -->
+    <color name="screenBackground">#F5F5F5</color>
+    <color name="surface">#FFFFFF</color>               <!-- Карточки и панель дней -->
+    <color name="strokeColor">#E0E0E0</color>
+    <color name="textPrimary">#212121</color>
+    <color name="textSecondary">#666666</color>
+
 </resources>
