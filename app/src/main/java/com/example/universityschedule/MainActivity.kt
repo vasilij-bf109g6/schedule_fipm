@@ -1,453 +1,251 @@
 package com.example.universityschedule
 
-import androidx.appcompat.app.AppCompatActivity
+import android.content.Intent
+import android.content.res.ColorStateList
 import android.os.Bundle
-import android.widget.ArrayAdapter
-import android.widget.Button
-import android.widget.LinearLayout
-import android.graphics.Color  // Добавьте этот импорт вверху файла
-import android.graphics.Paint  // Добавьте этот импорт
-import android.widget.ListView
-import android.content.Context
-import android.view.LayoutInflater
-import java.util.Locale
-import android.util.Log  // ←
+import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
-import androidx.appcompat.app.AlertDialog
-import android.widget.Toast
-import android.content.Intent
-import android.content.SharedPreferences
-import android.content.res.ColorStateList
-import java.util.Date
 import android.view.View
-import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
+import android.widget.Toast
+import androidx.annotation.ColorRes
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatButton
+import androidx.appcompat.widget.Toolbar
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
-import android.widget.TextView
-import java.text.SimpleDateFormat
-import com.google.firebase.FirebaseApp
-import com.google.firebase.firestore.ktx.firestore
-import com.google.firebase.ktx.Firebase
-import java.util.TimerTask
-import java.util.*
-import androidx.appcompat.widget.Toolbar
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
-import androidx.lifecycle.Observer
-
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.RecyclerView
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
+    private lateinit var settings: UserSettings
+    private lateinit var viewModel: ScheduleViewModel
+    private val scheduleAdapter = ScheduleAdapter()
+
     private lateinit var currentClassTextView: TextView
     private lateinit var scheduleTitleTextView: TextView
-    private lateinit var scheduleListView: ListView
-    private var updateTimer: Timer? = null
     private lateinit var daysContainer: LinearLayout
-    private lateinit var prefs: SharedPreferences
-    private lateinit var toolbar: Toolbar
-    private lateinit var viewModel: ScheduleViewModel  // Добавляем ViewModel
-    private lateinit var toolbarDateTextView: TextView
-    private lateinit var toolbarTitleTextView: TextView
     private lateinit var toolbarSubtitleTextView: TextView
-    private var weekOffset = 0 // 0 - текущая неделя, 1 - следующая, -1 - предыдущая
+    private lateinit var toolbarDateTextView: TextView
     private lateinit var btnNextWeek: ImageView
-
-
 
     // Текущий выбранный день (по умолчанию сегодня)
     private var selectedDay: Int = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-    // Для временного просмотра других групп
-    private var isTemporaryView = false
-    private var tempSubgroup = 1
-    private var tempInterest = "readers"
+    private var weekOffset = 0 // 0 - текущая неделя, 1 - следующая
 
-    // Сохраняем оригинальные настройки
-    private var originalSubgroup = 1
-    private var originalInterest = "readers"
-    private val dayNames = mapOf(
-        Calendar.MONDAY to "пн",
-        Calendar.TUESDAY to "вт",
-        Calendar.WEDNESDAY to "ср",
-        Calendar.THURSDAY to "чт",
-        Calendar.FRIDAY to "пт",
-        Calendar.SATURDAY to "сб",
-        Calendar.SUNDAY to "вс"
-    )
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Инициализируем SharedPreferences
-        prefs = getSharedPreferences("user_settings", MODE_PRIVATE)
-        // Восстанавливаем временный просмотр из SharedPreferences
-        isTemporaryView = prefs.getBoolean("is_temporary_view", false)
-        if (isTemporaryView) {
-            tempSubgroup = prefs.getInt("temp_subgroup", 1)
-            tempInterest = prefs.getString("temp_interest", "readers") ?: "readers"
-            originalSubgroup = prefs.getInt("original_subgroup", 1)
-            originalInterest = prefs.getString("original_interest", "readers") ?: "readers"
-        }
-        // Проверяем, есть ли сохранённые настройки
-        if (!prefs.contains("subgroup") || !prefs.contains("interest_group")) {
-            // Настроек нет - открываем экран выбора группы
+        settings = UserSettings(this)
+
+        // Группа не выбрана - открываем экран выбора группы
+        if (settings.myGroup == null) {
             startActivity(Intent(this, WelcomeActivity::class.java))
             finish()
             return
         }
 
-        // Настройки есть - инициализируем основной интерфейс
         setContentView(R.layout.activity_main)
-
-        // Инициализируем Toolbar
-        setupToolbar()
-
-        // Инициализируем View элементы
-        initViews()  // ← Этот метод теперь инициализирует toolbarSubtitleTextView
+        setSupportActionBar(findViewById<Toolbar>(R.id.toolbar))
+        initViews()
         setupDaysPanel()
 
-        // === ИНИЦИАЛИЗАЦИЯ ViewModel ===
         // Само расписание загружается в onResume
-        val repository = ScheduleRepository()
-        val viewModelFactory = ViewModelFactory(repository)
-        viewModel = ViewModelProvider(this, viewModelFactory).get(ScheduleViewModel::class.java)
+        viewModel = ViewModelProvider(this, ViewModelFactory(ScheduleRepository()))[ScheduleViewModel::class.java]
 
-        // Настройка переключения недель
         btnNextWeek.setOnClickListener {
-            if (weekOffset == 0) {
-                // Переходим на следующую неделю
-                weekOffset = 1
-                btnNextWeek.setImageResource(android.R.drawable.ic_media_previous)
-                btnNextWeek.setColorFilter(ContextCompat.getColor(this, R.color.colorPrimary))
-            } else {
-                // Возвращаемся к текущей неделе
-                weekOffset = 0
-                btnNextWeek.setImageResource(android.R.drawable.ic_media_next)
-                btnNextWeek.setColorFilter(ContextCompat.getColor(this, R.color.colorPrimary))
-            }
-
+            weekOffset = if (weekOffset == 0) 1 else 0
+            btnNextWeek.setImageResource(
+                if (weekOffset == 0) android.R.drawable.ic_media_next else android.R.drawable.ic_media_previous
+            )
             updateDaysPanel()
             updateScheduleForSelectedDay()
-            updateCurrentClassStatus()
         }
-        // Наблюдаем за расписанием
+
         // Пустое расписание тоже показываем — иначе на экране остаются старые данные
-        viewModel.weeklySchedule.observe(this, Observer {
+        viewModel.weeklySchedule.observe(this) {
             updateScheduleForSelectedDay()
-            updateToolbarTitle()
-        })
+        }
 
-        // Наблюдаем за состоянием загрузки
-        viewModel.isLoading.observe(this, Observer { isLoading ->
-            if (isLoading) {
-                // Можно показать ProgressBar
-                scheduleTitleTextView.text = "Загрузка расписания..."
-            } else {
-                scheduleTitleTextView.text = "📖 Расписание:"
-            }
-        })
+        viewModel.isLoading.observe(this) { isLoading ->
+            scheduleTitleTextView.setText(if (isLoading) R.string.schedule_title_loading else R.string.schedule_title)
+        }
 
-        // Результат загрузки: ошибки показываем всегда, успех — только после ручного обновления
-        viewModel.loadResult.observe(this, Observer { event ->
+        // Ошибки показываем всегда, успех — только после ручного обновления
+        viewModel.loadResult.observe(this) { event ->
             when (val result = event.getContentIfNotHandled()) {
-                is LoadResult.Failure -> Toast.makeText(
-                    this,
-                    "❌ Ошибка загрузки\n${getReadableError(result.error)}",
-                    Toast.LENGTH_LONG
-                ).show()
-                LoadResult.Success -> {
-                    val message = if (isTemporaryView) {
-                        "✅ Временный просмотр обновлен"
-                    } else {
-                        "✅ Ваше расписание обновлено"
-                    }
-                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-                }
+                is LoadResult.Failure -> toast(getString(R.string.load_failed, getReadableError(result.error)), Toast.LENGTH_LONG)
+                LoadResult.Success -> toast(
+                    getString(if (settings.temporaryGroup != null) R.string.refresh_done_temporary else R.string.refresh_done_mine)
+                )
                 null -> Unit
             }
-        })
-    }
-    private fun formatDateWithCapitalMonth(date: Date): String {
-        val dateFormat = SimpleDateFormat("d MMMM", Locale("ru"))
-        val formattedDate = dateFormat.format(date)
-
-        Log.d("DATE_FORMAT", "Исходная дата: $formattedDate")
-
-        // Находим пробел и делаем следующую букву заглавной
-        val spaceIndex = formattedDate.indexOf(' ')
-        return if (spaceIndex != -1 && spaceIndex + 1 < formattedDate.length) {
-            val dayPart = formattedDate.substring(0, spaceIndex + 1)
-            val monthPart = formattedDate.substring(spaceIndex + 1)
-
-            Log.d("DATE_FORMAT", "День: '$dayPart', Месяц: '$monthPart'")
-
-            val capitalizedMonth = monthPart.replaceFirstChar {
-                if (it.isLowerCase()) it.titlecase(Locale("ru")) else it.toString()
-            }
-
-            val result = dayPart + capitalizedMonth
-            Log.d("DATE_FORMAT", "Результат: $result")
-            result
-        } else {
-            Log.d("DATE_FORMAT", "Не удалось разобрать дату: $formattedDate")
-            formattedDate
-        }
-    }
-
-    // Обновите остальные методы:
-    private fun getCurrentDateFormatted(): String {
-        return formatDateWithCapitalMonth(Date())
-    }
-
-    private fun getDateForDay(targetDay: Int): String {
-        val calendar = Calendar.getInstance()
-
-        // Считаем от понедельника вручную: Calendar.set(DAY_OF_WEEK) зависит от локали
-        // (в США неделя начинается с воскресенья, и в воскресенье получался следующий понедельник)
-        val today = calendar.get(Calendar.DAY_OF_WEEK)
-        val daysToAdd = ScheduleLogic.daysFromMonday(targetDay) - ScheduleLogic.daysFromMonday(today) + 7 * weekOffset
-        calendar.add(Calendar.DAY_OF_MONTH, daysToAdd)
-
-        return formatDateWithCapitalMonth(calendar.time)
-    }
-
-    // Добавьте вспомогательный метод:
-    private fun getDayName(day: Int): String {
-        return when (day) {
-            Calendar.SUNDAY -> "ВС"
-            Calendar.MONDAY -> "ПН"
-            Calendar.TUESDAY -> "ВТ"
-            Calendar.WEDNESDAY -> "СР"
-            Calendar.THURSDAY -> "ЧТ"
-            Calendar.FRIDAY -> "ПТ"
-            Calendar.SATURDAY -> "СБ"
-            else -> "??"
-        }
-    }
-    private fun getCurrentDayOfWeek(): Int {
-        return Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
-    }
-
-    // Тот же день недели на следующей неделе — уже не «сегодня»
-    private fun isSelectedDayToday(): Boolean {
-        return weekOffset == 0 && selectedDay == getCurrentDayOfWeek()
-    }
-    private fun refreshUI() {
-        Log.d("REFRESH_UI", "=== НАЧАЛО ОБНОВЛЕНИЯ UI ===")
-
-        // Всегда перечитываем SharedPreferences
-        prefs = getSharedPreferences("user_settings", MODE_PRIVATE)
-
-        val subgroup = prefs.getInt("subgroup", 1)
-        val interest = prefs.getString("interest_group", "readers") ?: "readers"
-
-        Log.d("REFRESH_UI", "Загружены настройки: subgroup=$subgroup, interest=$interest")
-
-        // 1. Обновляем Toolbar (группа + дата)
-        updateToolbarTitle()
-
-        // ... остальной код
-    }
-    // Инициализация панели с днями недели (воскресенье в конце)
-    private fun setupDaysPanel() {
-        // Очищаем контейнер
-        daysContainer.removeAllViews()
-
-        // Порядок дней: ПН, ВТ, СР, ЧТ, ПТ, СБ, ВС
-        val daysOrder = listOf(
-            Calendar.MONDAY,
-            Calendar.TUESDAY,
-            Calendar.WEDNESDAY,
-            Calendar.THURSDAY,
-            Calendar.FRIDAY,
-            Calendar.SATURDAY,
-            Calendar.SUNDAY
-        )
-
-        // Создаем кнопки для каждого дня
-        daysOrder.forEach { day ->
-            createDayButton(day)
         }
 
-        // Обновляем внешний вид
-        updateDaysPanel()
+        startMinuteTicker()
     }
 
-    private fun createDayButton(dayNumber: Int) {
-        val dayButton = androidx.appcompat.widget.AppCompatButton(this).apply {
-            text = dayNames[dayNumber] ?: "?"
-            isAllCaps = false
-
-            // Увеличиваем размеры с 40dp до 48dp
-            layoutParams = LinearLayout.LayoutParams(
-                dpToPx(48),  // Увеличили с 40 до 48
-                dpToPx(48)   // Увеличили с 40 до 48
-            ).apply {
-                marginEnd = dpToPx(4)  // Оставляем 4dp
-            }
-
-            // Устанавливаем нормальный фон
-            background = ContextCompat.getDrawable(context, R.drawable.circle_background)
-            setTextColor(ContextCompat.getColor(context, R.color.dayNormal))
-            textSize = 12f
-
-            // Центрируем текст
-            gravity = android.view.Gravity.CENTER
-
-            // Убираем внутренние отступы у кнопки
-            setPadding(0, 0, 0, 0)
-
-            setOnClickListener {
-                selectedDay = dayNumber
-                updateDaysPanel()
-                updateScheduleForSelectedDay()
-            }
-        }
-
-        daysContainer.addView(dayButton)
-    }
-
-    // Вспомогательная функция для преобразования dp в пиксели
-    private fun dpToPx(dp: Int): Int {
-        return (dp * resources.displayMetrics.density).toInt()
-    }
-
-    private fun updateDaysPanel() {
-        val today = getCurrentDayOfWeek()
-
-        for (i in 0 until daysContainer.childCount) {
-            val button = daysContainer.getChildAt(i) as androidx.appcompat.widget.AppCompatButton
-
-            val dayNumber = when (i) {
-                0 -> Calendar.MONDAY
-                1 -> Calendar.TUESDAY
-                2 -> Calendar.WEDNESDAY
-                3 -> Calendar.THURSDAY
-                4 -> Calendar.FRIDAY
-                5 -> Calendar.SATURDAY
-                6 -> Calendar.SUNDAY
-                else -> continue
-            }
-
-            // Красим через tint, чтобы кнопка осталась круглой (setBackgroundColor заменял фон квадратом)
-            fun paint(backgroundRes: Int, textRes: Int, alpha: Float) {
-                ViewCompat.setBackgroundTintList(button, ColorStateList.valueOf(ContextCompat.getColor(this, backgroundRes)))
-                button.setTextColor(ContextCompat.getColor(this, textRes))
-                button.alpha = alpha
-            }
-
-            // Определяем, является ли день сегодняшним (только на текущей неделе)
-            val isToday = weekOffset == 0 && dayNumber == today
-
-            when {
-                isToday && dayNumber == selectedDay -> {
-                    // Сегодня и выбран
-                    paint(R.color.daySelected, android.R.color.white, 1.0f)
-                }
-                isToday -> {
-                    // Сегодня, но не выбран
-                    paint(R.color.dayToday, android.R.color.white, 1.0f)
-                }
-                dayNumber == selectedDay -> {
-                    // Выбран, но не сегодня
-                    paint(R.color.daySelected, android.R.color.white, 1.0f)
-                }
-                weekOffset != 0 -> {
-                    // День следующей недели
-                    paint(R.color.surface, R.color.dayNormal, 0.6f)  // Полупрозрачность для дней следующей недели
-                }
-                else -> {
-                    // Обычный день текущей недели
-                    paint(R.color.surface, R.color.dayNormal, 1.0f)
-                }
-            }
-
-            button.text = dayNames[dayNumber] ?: "?"
-        }
-    }
-
-    // Обновление расписания для выбранного дня
-    private fun updateScheduleForSelectedDay() {
-        val schedule = viewModel.getScheduleForDay(selectedDay)
-
-        scheduleListView.adapter = ScheduleAdapter(this, schedule, isSelectedDayToday())
-
-        // Воскресенье всегда скрываем, другие дни - только если нет пар
-        val isSunday = selectedDay == Calendar.SUNDAY
-        scheduleTitleTextView.visibility = if (isSunday || schedule.isEmpty()) View.GONE else View.VISIBLE
-
-        // Обновляем статус (перерыв, пар нет и т.д.)
-        updateCurrentClassStatus()
-        updateToolbarDateForSelectedDay()
-    }
-
-    private fun updateToolbarDateForSelectedDay() {
-        // getDateForDay учитывает weekOffset, поэтому на следующей неделе дата тоже верная
-        toolbarDateTextView.text = " | ${getDateForDay(selectedDay)}"
-    }
-
-    private fun setupToolbar() {
-        toolbar = findViewById(R.id.toolbar)
-        setSupportActionBar(toolbar)
-    }
-
-    // Новый метод для обновления заголовка
-    private fun updateToolbarTitle() {
-        Log.d("TOOLBAR_TITLE", "Обновление Toolbar...")
-
-        prefs = getSharedPreferences("user_settings", MODE_PRIVATE)
-
-        val subtitle = if (isTemporaryView) {
-            val interestText = when (tempInterest) {
-                "readers" -> "Чтецы"
-                "singers" -> "Певцы"
-                else -> tempInterest
-            }
-            "Гр.$tempSubgroup $interestText"
-        } else {
-            val subgroup = prefs.getInt("subgroup", 1)
-            val interest = prefs.getString("interest_group", "readers") ?: "readers"
-            val interestText = when (interest) {
-                "readers" -> "Чтецы"
-                "singers" -> "Певцы"
-                else -> interest
-            }
-            "Гр.$subgroup $interestText"
-        }
-        toolbarSubtitleTextView.text = subtitle
-
-        // Добавьте обновление даты!
-        updateToolbarDateForSelectedDay()
+    override fun onResume() {
+        super.onResume()
+        invalidateOptionsMenu()
+        updateToolbar()
+        loadActiveGroup()
     }
 
     private fun initViews() {
         currentClassTextView = findViewById(R.id.currentClassTextView)
         scheduleTitleTextView = findViewById(R.id.scheduleTitleTextView)
-        scheduleListView = findViewById(R.id.scheduleListView)
         daysContainer = findViewById(R.id.daysContainer)
-        toolbarTitleTextView = findViewById(R.id.toolbar_title)
         toolbarSubtitleTextView = findViewById(R.id.toolbar_subtitle)
         toolbarDateTextView = findViewById(R.id.toolbar_date)
-
-        // Инициализируем ImageView стрелочки
         btnNextWeek = findViewById(R.id.btnNextWeek)
+        findViewById<RecyclerView>(R.id.scheduleRecyclerView).adapter = scheduleAdapter
     }
 
-    // Функция для обновления статуса текущей пары
+    private fun loadActiveGroup(userInitiated: Boolean = false) {
+        val group = settings.activeGroup ?: return
+        viewModel.loadSchedule(group.subgroup, group.interest.key, userInitiated)
+    }
+
+    // Раз в минуту обновляем статус и подсветку; работает, пока экран виден
+    private fun startMinuteTicker() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                var lastDay = currentDayOfWeek()
+                while (true) {
+                    val now = Calendar.getInstance()
+                    delay((60 - now.get(Calendar.SECOND)) * 1000L)
+
+                    // Наступила полночь — «сегодня» сместилось
+                    if (currentDayOfWeek() != lastDay) {
+                        lastDay = currentDayOfWeek()
+                        updateDaysPanel()
+                        updateScheduleForSelectedDay()
+                    } else if (isSelectedDayToday()) {
+                        updateCurrentClassStatus()
+                        scheduleAdapter.refreshTiming()
+                    }
+                }
+            }
+        }
+    }
+
+    // ---------- Даты ----------
+
+    private fun currentDayOfWeek(): Int = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+
+    // Тот же день недели на следующей неделе — уже не «сегодня»
+    private fun isSelectedDayToday(): Boolean = weekOffset == 0 && selectedDay == currentDayOfWeek()
+
+    // «13 Октября» для выбранного дня с учётом weekOffset
+    private fun formatDateForDay(targetDay: Int): String {
+        val calendar = Calendar.getInstance()
+        // Считаем от понедельника вручную: Calendar.set(DAY_OF_WEEK) зависит от локали
+        val daysToAdd = ScheduleLogic.daysFromMonday(targetDay) - ScheduleLogic.daysFromMonday(currentDayOfWeek()) + 7 * weekOffset
+        calendar.add(Calendar.DAY_OF_MONTH, daysToAdd)
+
+        val russian = Locale("ru")
+        val formatted = SimpleDateFormat("d MMMM", russian).format(calendar.time)
+        val spaceIndex = formatted.indexOf(' ')
+        if (spaceIndex == -1) return formatted
+        return formatted.substring(0, spaceIndex + 1) +
+            formatted.substring(spaceIndex + 1).replaceFirstChar { it.titlecase(russian) }
+    }
+
+    // ---------- Панель дней ----------
+
+    private fun setupDaysPanel() {
+        val dayNames = resources.getStringArray(R.array.day_short_names)
+        daysContainer.removeAllViews()
+
+        ScheduleLogic.WEEK_DAYS.forEachIndexed { index, day ->
+            val dayButton = AppCompatButton(this).apply {
+                text = dayNames[index]
+                isAllCaps = false
+                textSize = 12f
+                gravity = Gravity.CENTER
+                setPadding(0, 0, 0, 0)
+                background = ContextCompat.getDrawable(context, R.drawable.circle_background)
+                layoutParams = LinearLayout.LayoutParams(dpToPx(48), dpToPx(48)).apply {
+                    marginEnd = dpToPx(4)
+                }
+                setOnClickListener {
+                    selectedDay = day
+                    updateDaysPanel()
+                    updateScheduleForSelectedDay()
+                }
+            }
+            daysContainer.addView(dayButton)
+        }
+
+        updateDaysPanel()
+    }
+
+    private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
+
+    private fun updateDaysPanel() {
+        val today = currentDayOfWeek()
+
+        ScheduleLogic.WEEK_DAYS.forEachIndexed { index, day ->
+            val button = daysContainer.getChildAt(index) as? AppCompatButton ?: return@forEachIndexed
+            val isToday = weekOffset == 0 && day == today
+
+            val (backgroundRes, textRes, alpha) = when {
+                day == selectedDay -> Triple(R.color.daySelected, android.R.color.white, 1.0f)
+                isToday -> Triple(R.color.dayToday, android.R.color.white, 1.0f)
+                // Дни следующей недели полупрозрачные
+                weekOffset != 0 -> Triple(R.color.surface, R.color.dayNormal, 0.6f)
+                else -> Triple(R.color.surface, R.color.dayNormal, 1.0f)
+            }
+
+            // Красим через tint, чтобы кнопка осталась круглой
+            ViewCompat.setBackgroundTintList(button, ColorStateList.valueOf(ContextCompat.getColor(this, backgroundRes)))
+            button.setTextColor(ContextCompat.getColor(this, textRes))
+            button.alpha = alpha
+        }
+    }
+
+    // ---------- Расписание и статус ----------
+
+    private fun updateScheduleForSelectedDay() {
+        val schedule = viewModel.getScheduleForDay(selectedDay)
+        scheduleAdapter.submit(schedule, isSelectedDayToday())
+
+        // Воскресенье всегда скрываем, другие дни - только если нет пар
+        val isSunday = selectedDay == Calendar.SUNDAY
+        scheduleTitleTextView.visibility = if (isSunday || schedule.isEmpty()) View.GONE else View.VISIBLE
+
+        updateCurrentClassStatus()
+        updateToolbarDate()
+    }
+
     private fun updateCurrentClassStatus() {
         val schedule = viewModel.getScheduleForDay(selectedDay)
         val activeSchedule = ScheduleLogic.activeSorted(schedule)
 
         // Воскресенье — единственный выходной
         if (selectedDay == Calendar.SUNDAY) {
-            showStatus("Пар нет", R.color.colorPastClass)
+            showStatus(getString(R.string.status_no_classes), R.color.colorPastClass)
             return
         }
 
-        // Следующая неделя
         if (weekOffset > 0) {
             if (activeSchedule.isEmpty()) {
-                showStatus("Пар нет (следующая неделя)", R.color.colorPastClass)
+                showStatus(getString(R.string.status_no_classes_next_week), R.color.colorPastClass)
             } else {
-                showStatus("Следующая неделя: пары начнутся в ${activeSchedule.first().startTime}", R.color.colorFutureClass)
+                showStatus(getString(R.string.status_next_week_starts, activeSchedule.first().startTime), R.color.colorFutureClass)
             }
             return
         }
@@ -455,7 +253,7 @@ class MainActivity : AppCompatActivity() {
         // Другой день текущей недели: статус показываем, только если пар нет
         if (!isSelectedDayToday()) {
             if (activeSchedule.isEmpty()) {
-                showStatus("Пар нет", R.color.colorPastClass)
+                showStatus(getString(R.string.status_no_classes), R.color.colorPastClass)
             } else {
                 currentClassTextView.visibility = View.GONE
             }
@@ -464,407 +262,149 @@ class MainActivity : AppCompatActivity() {
 
         val now = ScheduleLogic.minutesOfDay(Calendar.getInstance())
         when (val status = ScheduleLogic.todayStatus(schedule, now)) {
-            DayStatus.NoClasses -> showStatus("Пар нет", R.color.colorPastClass)
-            is DayStatus.BeforeFirst -> showStatus("Пары начинаются в ${status.first.startTime}", R.color.colorPastClass)
+            DayStatus.NoClasses -> showStatus(getString(R.string.status_no_classes), R.color.colorPastClass)
+            is DayStatus.BeforeFirst -> showStatus(
+                getString(R.string.status_before_first, status.first.startTime),
+                R.color.colorPastClass
+            )
             is DayStatus.InProgress -> showStatus(
-                "Сейчас: ${status.current.subject} (${formatTimeLeft(status.minutesLeft)})",
+                getString(R.string.status_in_progress, status.current.subject, formatTimeLeft(status.minutesLeft)),
                 R.color.colorCurrentClass
             )
             is DayStatus.Break -> showStatus(
-                "Перерыв. Следующая: ${status.next.subject} в ${status.next.startTime}",
+                getString(R.string.status_break, status.next.subject, status.next.startTime),
                 R.color.colorPastClass
             )
-            DayStatus.Finished -> showStatus("Пары закончились", R.color.colorPastClass)
+            DayStatus.Finished -> showStatus(getString(R.string.status_finished), R.color.colorPastClass)
         }
     }
 
-    private fun showStatus(text: String, colorRes: Int) {
+    private fun showStatus(text: String, @ColorRes colorRes: Int) {
         currentClassTextView.text = text
         ViewCompat.setBackgroundTintList(currentClassTextView, ColorStateList.valueOf(ContextCompat.getColor(this, colorRes)))
         currentClassTextView.visibility = View.VISIBLE
     }
 
     private fun formatTimeLeft(totalMinutes: Int): String {
-        return when {
-            totalMinutes <= 0 -> "заканчивается"
-            totalMinutes < 60 -> "осталось до конца: $totalMinutes мин"
-            else -> {
-                val hours = totalMinutes / 60
-                val minutes = totalMinutes % 60
+        if (totalMinutes <= 0) return getString(R.string.time_left_ending)
+        if (totalMinutes < 60) return getString(R.string.time_left, getString(R.string.minutes_short, totalMinutes))
 
-                val hoursText = when {
-                    hours == 1 -> "$hours час"
-                    hours in 2..4 -> "$hours часа"
-                    else -> "$hours часов"
-                }
-
-                val minutesText = when {
-                    minutes == 0 -> ""
-                    minutes == 1 -> " $minutes минута"
-                    minutes in 2..4 -> " $minutes минуты"
-                    else -> " $minutes минут"
-                }
-
-                "осталось до конца: $hoursText$minutesText"
-            }
-        }
+        val hours = totalMinutes / 60
+        val minutes = totalMinutes % 60
+        var text = resources.getQuantityString(R.plurals.hours, hours, hours)
+        if (minutes > 0) text += " " + resources.getQuantityString(R.plurals.minutes, minutes, minutes)
+        return getString(R.string.time_left, text)
     }
 
-    // Меню в Toolbar
+    // ---------- Toolbar ----------
+
+    private fun updateToolbar() {
+        toolbarSubtitleTextView.text = settings.activeGroup?.shortName(this).orEmpty()
+        updateToolbarDate()
+    }
+
+    private fun updateToolbarDate() {
+        toolbarDateTextView.text = getString(R.string.toolbar_date, formatDateForDay(selectedDay))
+    }
+
+    // ---------- Меню ----------
+
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.main_menu, menu)
+        // Пункт "Моя группа" виден только во временном просмотре
+        menu.findItem(R.id.menu_return_to_my)?.isVisible = settings.temporaryGroup != null
+        return true
+    }
 
-        // Показываем/скрываем пункт "Вернуться к моей" в зависимости от режима
-        val returnItem = menu.findItem(R.id.menu_return_to_my)
-        returnItem?.isVisible = isTemporaryView
-
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        when (item.itemId) {
+            R.id.menu_refresh -> refreshSchedule()
+            R.id.menu_change_group -> showChangeGroupDialog()
+            R.id.menu_view_other -> showOtherSchedulesDialog()
+            R.id.menu_return_to_my -> returnToMyGroup()
+            else -> return super.onOptionsItemSelected(item)
+        }
         return true
     }
 
     private fun refreshSchedule() {
-        Log.d("REFRESH", "Ручное обновление расписания")
-
-        // 1. Проверяем интернет-соединение
         if (!NetworkUtils.isNetworkAvailable(this)) {
-            Toast.makeText(
-                this,
-                "❌ Нет интернет-соединения\nПроверьте подключение к сети",
-                Toast.LENGTH_LONG
-            ).show()
-
-            scheduleTitleTextView.text = "📖 Расписание (оффлайн)"
+            toast(getString(R.string.refresh_no_network), Toast.LENGTH_LONG)
+            scheduleTitleTextView.setText(R.string.schedule_title_offline)
             return
         }
 
-        // 2. Определяем, какую группу обновляем
-        val subgroup: Int
-        val interest: String
-
-        if (isTemporaryView) {
-            // Во временном режиме обновляем временную группу
-            subgroup = tempSubgroup
-            interest = tempInterest
-            Toast.makeText(this, "🔄 Обновляем временный просмотр...", Toast.LENGTH_SHORT).show()
-        } else {
-            // В обычном режиме обновляем свою группу
-            subgroup = prefs.getInt("subgroup", 1)
-            interest = prefs.getString("interest_group", "readers") ?: "readers"
-            Toast.makeText(this, "🔄 Обновляем ваше расписание...", Toast.LENGTH_SHORT).show()
-        }
-
-        Log.d("REFRESH", "Загружаем расписание для: subgroup=$subgroup, interest=$interest")
-
+        val isTemporary = settings.temporaryGroup != null
+        toast(getString(if (isTemporary) R.string.refresh_started_temporary else R.string.refresh_started_mine))
         // Результат придёт в наблюдатель viewModel.loadResult
-        viewModel.loadSchedule(subgroup, interest, userInitiated = true)
+        loadActiveGroup(userInitiated = true)
     }
 
-    private fun getReadableError(error: LoadError): String {
-        return when (error) {
-            LoadError.OFFLINE -> "Нет соединения с сервером"
-            LoadError.NOT_FOUND -> "Расписание для этой группы не найдено"
-            LoadError.BAD_DATA -> "Расписание на сервере заполнено с ошибкой"
-            LoadError.UNKNOWN -> "Ошибка загрузки данных"
+    private fun getReadableError(error: LoadError): String = getString(
+        when (error) {
+            LoadError.OFFLINE -> R.string.error_offline
+            LoadError.NOT_FOUND -> R.string.error_not_found
+            LoadError.BAD_DATA -> R.string.error_bad_data
+            LoadError.UNKNOWN -> R.string.error_unknown
         }
-    }
-
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            R.id.menu_refresh -> {
-                refreshSchedule()
-                true
-            }
-            R.id.menu_change_group -> {
-                showChangeGroupDialog()
-                true
-            }
-            R.id.menu_view_other -> {
-                showOtherSchedulesDialog()
-                true
-            }
-            R.id.menu_return_to_my -> {
-                returnToMyGroup()
-                true
-            }
-            else -> super.onOptionsItemSelected(item)
-        }
-    }
+    )
 
     private fun showChangeGroupDialog() {
-        val currentSubgroup = prefs.getInt("subgroup", 1)
-        val currentInterest = prefs.getString("interest_group", "readers") ?: "readers"
-
-        val currentInterestText = when (currentInterest) {
-            "readers" -> "Чтецы"
-            "singers" -> "Певцы"
-            else -> currentInterest
-        }
+        val myGroup = settings.myGroup ?: return
 
         AlertDialog.Builder(this)
-            .setTitle("Сменить группу")
-            .setMessage("Текущая группа: Подгруппа $currentSubgroup, $currentInterestText\n\nВы хотите изменить свою группу?")
-            .setPositiveButton("Сменить группу") { _, _ ->
+            .setTitle(R.string.menu_change_group)
+            .setMessage(getString(R.string.dialog_change_group_message, myGroup.fullName(this)))
+            .setPositiveButton(R.string.menu_change_group) { _, _ ->
                 startActivity(Intent(this, WelcomeActivity::class.java))
                 finish()
             }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(R.string.cancel, null)
             .show()
     }
 
     private fun showOtherSchedulesDialog() {
-        val schedules = arrayOf(
-            "Подгруппа 1 - Чтецы",
-            "Подгруппа 1 - Певцы",
-            "Подгруппа 2 - Чтецы",
-            "Подгруппа 2 - Певцы"
-        )
-
-        val currentSubgroup = prefs.getInt("subgroup", 1)
-        val currentInterest = prefs.getString("interest_group", "readers") ?: "readers"
+        val groups = Group.ALL
+        val titles = groups.map {
+            getString(R.string.group_list_item, it.subgroup, getString(it.interest.titleRes))
+        }.toTypedArray()
 
         AlertDialog.Builder(this)
-            .setTitle("Посмотреть расписание других групп")
-            .setItems(schedules) { _, which ->
-                val (subgroup, interest) = when (which) {
-                    0 -> Pair(1, "readers")
-                    1 -> Pair(1, "singers")
-                    2 -> Pair(2, "readers")
-                    else -> Pair(2, "singers")
-                }
+            .setTitle(R.string.dialog_other_groups_title)
+            .setItems(titles) { _, which ->
+                val group = groups[which]
 
-                if (subgroup == currentSubgroup && interest == currentInterest) {
+                if (group == settings.myGroup) {
                     // Из временного просмотра выбор своей группы возвращает к ней
-                    if (isTemporaryView) {
+                    if (settings.temporaryGroup != null) {
                         returnToMyGroup()
                     } else {
-                        Toast.makeText(this, "Это ваша текущая группа", Toast.LENGTH_SHORT).show()
+                        toast(getString(R.string.toast_own_group))
                     }
                     return@setItems
                 }
 
-                // Сохраняем оригинальные настройки
-                if (!isTemporaryView) {
-                    originalSubgroup = currentSubgroup
-                    originalInterest = currentInterest
-                }
-
-                // Устанавливаем временные настройки
-                isTemporaryView = true
-                tempSubgroup = subgroup
-                tempInterest = interest
-
-                // Сохраняем в SharedPreferences
-                val editor = prefs.edit()
-                editor.putBoolean("is_temporary_view", true)
-                editor.putInt("temp_subgroup", subgroup)
-                editor.putString("temp_interest", interest)
-                editor.putInt("original_subgroup", currentSubgroup)
-                editor.putString("original_interest", currentInterest)
-                editor.apply()
-
+                settings.temporaryGroup = group
                 invalidateOptionsMenu()
-                viewModel.loadSchedule(tempSubgroup, tempInterest)
-                updateToolbarTitle()
-
-                val interestText = when (interest) {
-                    "readers" -> "Чтецы" else -> "Певцы"
-                }
-                Toast.makeText(this, "Загружено: Подгруппа $subgroup, $interestText", Toast.LENGTH_SHORT).show()
+                updateToolbar()
+                loadActiveGroup()
+                toast(getString(R.string.toast_group_loaded, group.fullName(this)))
             }
-            .setNegativeButton("Отмена", null)
+            .setNegativeButton(R.string.cancel, null)
             .show()
     }
 
-    // Метод для обновления Toolbar во временном режиме
-    private fun updateToolbarForTemporaryView() {
-        val interestText = when (tempInterest) {
-            "readers" -> "Чтецы"
-            "singers" -> "Певцы"
-            else -> tempInterest
-        }
-        val subtitle = "Гр.$tempSubgroup $interestText"
-        toolbarSubtitleTextView.text = subtitle
-    }
-
-    // Метод для возврата к своей группе
     private fun returnToMyGroup() {
-        if (isTemporaryView) {
-            viewModel.loadSchedule(originalSubgroup, originalInterest)
-            isTemporaryView = false
+        if (settings.temporaryGroup == null) return
 
-            // Очищаем временные настройки
-            val editor = prefs.edit()
-            editor.remove("is_temporary_view")
-            editor.remove("temp_subgroup")
-            editor.remove("temp_interest")
-            editor.remove("original_subgroup")
-            editor.remove("original_interest")
-            editor.apply()
-
-            invalidateOptionsMenu()
-            updateToolbarTitle()
-            Toast.makeText(this, "Вернулись к вашей группе", Toast.LENGTH_SHORT).show()
-        }
-    }
-    override fun onResume() {
-        super.onResume()
-
-        // Всегда перечитываем настройки при возвращении в Activity
-        prefs = getSharedPreferences("user_settings", MODE_PRIVATE)
-
-        Log.d("ON_RESUME", "Обновление приложения, текущий день: ${getCurrentDayOfWeek()}")
-
-        // Сразу обновляем меню
+        settings.temporaryGroup = null
         invalidateOptionsMenu()
-
-        // Сразу обновляем Toolbar
-        updateToolbarTitle()
-
-        // Загружаем расписание в зависимости от режима
-        if (isTemporaryView) {
-            // Во временном режиме загружаем временную группу
-            viewModel.loadSchedule(tempSubgroup, tempInterest)
-        } else {
-            // В обычном режиме загружаем свою группу
-            val subgroup = prefs.getInt("subgroup", 1)
-            val interest = prefs.getString("interest_group", "readers") ?: "readers"
-            viewModel.loadSchedule(subgroup, interest)
-        }
-
-        // Таймер работает всегда: пользователь может переключиться на сегодня позже
-        startTimeUpdates()
+        updateToolbar()
+        loadActiveGroup()
+        toast(getString(R.string.toast_returned_to_my_group))
     }
 
-    override fun onPause() {
-        super.onPause()
-        stopTimeUpdates()
-    }
-
-    private fun startTimeUpdates() {
-        stopTimeUpdates()
-
-        updateTimer = Timer().apply {
-            scheduleAtFixedRate(object : TimerTask() {
-                override fun run() {
-                    if (isDestroyed || isFinishing) {
-                        cancel()
-                        return
-                    }
-
-                    runOnUiThread {
-                        if (isDestroyed || isFinishing) return@runOnUiThread
-
-                        if (isSelectedDayToday()) {
-                            updateCurrentClassStatus()
-                            (scheduleListView.adapter as? ScheduleAdapter)?.notifyDataSetChanged()
-                        }
-                    }
-                }
-            }, 0, 60000)
-        }
-    }
-
-    private fun stopTimeUpdates() {
-        updateTimer?.cancel()
-        updateTimer = null  // Важно: обнуляем ссылку!
-    }
-
-    override fun onDestroy() {
-        stopTimeUpdates()
-        super.onDestroy()
-    }
-
-    // Кастомный адаптер для списка пар
-    class ScheduleAdapter(
-        context: Context,
-        private val classes: List<UniversityClass>,
-        private val isToday: Boolean
-    ) : ArrayAdapter<UniversityClass>(
-        context.applicationContext,
-        0,
-        classes
-    ) {
-        // Сохраняем applicationContext для использования в методах
-        private val appContext = context.applicationContext
-
-        // Tint сохраняет скругление и рамку card_background
-        private fun setCardColor(container: View, colorRes: Int) {
-            ViewCompat.setBackgroundTintList(container, ColorStateList.valueOf(ContextCompat.getColor(appContext, colorRes)))
-        }
-
-        override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
-            // Используем LayoutInflater из parent.context
-            val view = convertView ?: LayoutInflater.from(parent.context)
-                .inflate(R.layout.item_class, parent, false)
-
-            val currentClass = classes[position]
-
-            // Находим элементы в макете
-            val timeTextView = view.findViewById<TextView>(R.id.classTimeTextView)
-            val subjectTextView = view.findViewById<TextView>(R.id.classSubjectTextView)
-            val roomTextView = view.findViewById<TextView>(R.id.classRoomTextView)
-            val teacherTextView = view.findViewById<TextView>(R.id.classTeacherTextView)
-            val container = view.findViewById<LinearLayout>(R.id.itemContainer)
-
-            // Устанавливаем данные
-            timeTextView.text = "${currentClass.startTime} - ${currentClass.endTime}"
-            subjectTextView.text = currentClass.subject
-            roomTextView.text = "Ауд. ${currentClass.room}"
-            teacherTextView.text = currentClass.teacher
-
-            if (currentClass.cancelled) {
-                // 1. Зачеркиваем текст предмета
-                subjectTextView.paintFlags =
-                    subjectTextView.paintFlags or Paint.STRIKE_THRU_TEXT_FLAG
-
-                // 2. Меняем цвет на серый
-                subjectTextView.setTextColor(Color.GRAY)
-                timeTextView.setTextColor(Color.GRAY)
-                roomTextView.setTextColor(Color.GRAY)
-                teacherTextView.setTextColor(Color.GRAY)
-
-                // 3. Делаем контейнер полупрозрачным
-                container.alpha = 0.5f
-
-                // 4. Можно добавить пометку "[ОТМЕНЕНО]"
-                // subjectTextView.text = "[ОТМЕНЕНО] ${currentClass.subject}"
-
-            } else {
-                // Если пара НЕ отменена - сбрасываем все эффекты
-                subjectTextView.paintFlags =
-                    subjectTextView.paintFlags and Paint.STRIKE_THRU_TEXT_FLAG.inv()
-
-                subjectTextView.setTextColor(ContextCompat.getColor(appContext, R.color.textPrimary))
-                timeTextView.setTextColor(ContextCompat.getColor(appContext, R.color.colorPrimary))
-                roomTextView.setTextColor(ContextCompat.getColor(appContext, R.color.textSecondary))
-                teacherTextView.setTextColor(ContextCompat.getColor(appContext, R.color.textSecondary))
-                container.alpha = 1f
-            }
-
-            // Определяем цвета только если это сегодня
-            if (isToday) {
-                val now = ScheduleLogic.minutesOfDay(Calendar.getInstance())
-
-                // Используем appContext для получения цветов
-                when (ScheduleLogic.timing(currentClass, now)) {
-                    ClassTiming.CURRENT -> {
-                        // Текущая пара - зеленый фон
-                        setCardColor(container, R.color.colorCurrentClass)
-                    }
-                    ClassTiming.PAST -> {
-                        // Прошедшая пара - серый фон
-                        setCardColor(container, R.color.colorPastClass)
-                    }
-                    ClassTiming.FUTURE -> {
-                        // Будущая пара - белый фон
-                        setCardColor(container, R.color.surface)
-                    }
-                }
-            } else {
-                // Для других дней - белый фон
-                setCardColor(container, R.color.surface)
-            }
-
-            return view
-        }
+    private fun toast(text: String, duration: Int = Toast.LENGTH_SHORT) {
+        Toast.makeText(this, text, duration).show()
     }
 }

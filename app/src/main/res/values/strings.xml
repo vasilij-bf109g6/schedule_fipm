@@ -1,3 +1,85 @@
 <resources>
     <string name="app_name">Расписание ФИПМ</string>
+
+    <!-- Группы -->
+    <string name="interest_readers">Чтецы</string>
+    <string name="interest_singers">Певцы</string>
+    <string name="group_short">Гр.%1$d %2$s</string>
+    <string name="group_full">Подгруппа %1$d, %2$s</string>
+    <string name="group_list_item">Подгруппа %1$d - %2$s</string>
+
+    <!-- Главный экран -->
+    <string name="toolbar_title">ФИПМ 1курс</string>
+    <string name="toolbar_date">" | %s"</string>
+    <string name="schedule_title">📖 Расписание:</string>
+    <string name="schedule_title_loading">Загрузка расписания...</string>
+    <string name="schedule_title_offline">📖 Расписание (оффлайн)</string>
+    <string-array name="day_short_names">
+        <item>пн</item>
+        <item>вт</item>
+        <item>ср</item>
+        <item>чт</item>
+        <item>пт</item>
+        <item>сб</item>
+        <item>вс</item>
+    </string-array>
+
+    <!-- Статус дня -->
+    <string name="status_no_classes">Пар нет</string>
+    <string name="status_no_classes_next_week">Пар нет (следующая неделя)</string>
+    <string name="status_next_week_starts">Следующая неделя: пары начнутся в %s</string>
+    <string name="status_before_first">Пары начинаются в %s</string>
+    <string name="status_in_progress">Сейчас: %1$s (%2$s)</string>
+    <string name="status_break">Перерыв. Следующая: %1$s в %2$s</string>
+    <string name="status_finished">Пары закончились</string>
+    <string name="time_left_ending">заканчивается</string>
+    <string name="time_left">осталось до конца: %s</string>
+    <string name="minutes_short">%d мин</string>
+    <plurals name="hours">
+        <item quantity="one">%d час</item>
+        <item quantity="few">%d часа</item>
+        <item quantity="many">%d часов</item>
+        <item quantity="other">%d часа</item>
+    </plurals>
+    <plurals name="minutes">
+        <item quantity="one">%d минута</item>
+        <item quantity="few">%d минуты</item>
+        <item quantity="many">%d минут</item>
+        <item quantity="other">%d минуты</item>
+    </plurals>
+
+    <!-- Карточка пары -->
+    <string name="class_time">%1$s - %2$s</string>
+    <string name="class_room">Ауд. %s</string>
+
+    <!-- Обновление и ошибки -->
+    <string name="refresh_no_network">❌ Нет интернет-соединения\nПроверьте подключение к сети</string>
+    <string name="refresh_started_mine">🔄 Обновляем ваше расписание...</string>
+    <string name="refresh_started_temporary">🔄 Обновляем временный просмотр...</string>
+    <string name="refresh_done_mine">✅ Ваше расписание обновлено</string>
+    <string name="refresh_done_temporary">✅ Временный просмотр обновлен</string>
+    <string name="load_failed">❌ Ошибка загрузки\n%s</string>
+    <string name="error_offline">Нет соединения с сервером</string>
+    <string name="error_not_found">Расписание для этой группы не найдено</string>
+    <string name="error_bad_data">Расписание на сервере заполнено с ошибкой</string>
+    <string name="error_unknown">Ошибка загрузки данных</string>
+
+    <!-- Меню и диалоги -->
+    <string name="menu_refresh">Обновить</string>
+    <string name="menu_change_group">Сменить группу</string>
+    <string name="menu_view_other">Посмотреть другие</string>
+    <string name="menu_return_to_my">← Моя группа</string>
+    <string name="dialog_change_group_message">Текущая группа: %s\n\nВы хотите изменить свою группу?</string>
+    <string name="dialog_other_groups_title">Посмотреть расписание других групп</string>
+    <string name="cancel">Отмена</string>
+    <string name="toast_own_group">Это ваша текущая группа</string>
+    <string name="toast_group_loaded">Загружено: %s</string>
+    <string name="toast_returned_to_my_group">Вернулись к вашей группе</string>
+
+    <!-- Экран выбора группы -->
+    <string name="welcome_title">Добро пожаловать!</string>
+    <string name="welcome_choose_subgroup">Выберите подгруппу</string>
+    <string name="welcome_continue">Продолжить</string>
+    <string name="welcome_footer_faculty">ФИПМ</string>
+    <string name="welcome_footer_course">1 курс</string>
 </resources>

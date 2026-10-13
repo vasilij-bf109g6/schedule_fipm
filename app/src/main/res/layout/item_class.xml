@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:id="@+id/itemContainer"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
@@ -15,7 +16,7 @@
         android:id="@+id/classTimeTextView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="09:00-10:30"
+        tools:text="09:00-10:30"
         android:textSize="16sp"
         android:textColor="#2196F3"
         android:layout_marginBottom="4dp"/>
@@ -25,7 +26,7 @@
         android:id="@+id/classSubjectTextView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Математика"
+        tools:text="Математика"
         android:textSize="18sp"
         android:textStyle="bold"
         android:textColor="@color/textPrimary"
@@ -44,7 +45,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Ауд. 101"
+            tools:text="Ауд. 101"
             android:textSize="14sp"
             android:textColor="@color/textSecondary"/>
 
@@ -54,7 +55,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Иванов И.И."
+            tools:text="Иванов И.И."
             android:textSize="14sp"
             android:textColor="@color/textSecondary"
             android:gravity="end"/>

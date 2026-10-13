@@ -26,7 +26,7 @@
                 android:id="@+id/toolbar_title"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="ФИПМ 1курс"
+                android:text="@string/toolbar_title"
                 android:textColor="@android:color/white"
                 android:textSize="18sp"
                 android:textStyle="bold" />
@@ -41,7 +41,7 @@
                     android:id="@+id/toolbar_subtitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Гр.1 Чтецы"
+                    tools:text="Гр.1 Чтецы"
                     android:textColor="@android:color/white"
                     android:textSize="12sp" />
 
@@ -49,7 +49,7 @@
                     android:id="@+id/toolbar_date"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text=" | 25 Декабря"
+                    tools:text=" | 25 Декабря"
                     android:textColor="@android:color/white"
                     android:textSize="12sp"
                     android:layout_marginStart="4dp" />
@@ -100,7 +100,7 @@
         android:id="@+id/currentClassTextView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Статус"
+        tools:text="Статус"
         android:textColor="@color/textPrimary"
         android:textSize="14sp"
         android:padding="8dp"
@@ -127,7 +127,7 @@
             android:id="@+id/scheduleTitleTextView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="📖 Расписание:"
+            android:text="@string/schedule_title"
             android:textSize="16sp"
             android:textStyle="bold"
             android:textColor="@color/textPrimary"
@@ -135,11 +135,11 @@
             android:visibility="visible" />
 
         <!-- Список пар -->
-        <ListView
-            android:id="@+id/scheduleListView"
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/scheduleRecyclerView"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:divider="@color/strokeColor"
-            android:dividerHeight="1dp" />
+            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
+            tools:listitem="@layout/item_class" />
     </LinearLayout>
 </LinearLayout>
