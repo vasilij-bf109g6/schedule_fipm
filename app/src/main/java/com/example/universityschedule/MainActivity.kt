@@ -100,16 +100,13 @@ class MainActivity : AppCompatActivity() {
 
         // Инициализируем View элементы
         initViews()  // ← Этот метод теперь инициализирует toolbarSubtitleTextView
+        setupDaysPanel()
 
         // === ИНИЦИАЛИЗАЦИЯ ViewModel ===
-        val repository = ScheduleRepository(this)
+        // Само расписание загружается в onResume
+        val repository = ScheduleRepository()
         val viewModelFactory = ViewModelFactory(repository)
         viewModel = ViewModelProvider(this, viewModelFactory).get(ScheduleViewModel::class.java)
-
-        // Загружаем расписание
-        val subgroup = prefs.getInt("subgroup", 1)
-        val interest = prefs.getString("interest_group", "readers") ?: "readers"
-        viewModel.loadSchedule(subgroup, interest)
 
         // Настройка переключения недель
         btnNextWeek.setOnClickListener {
@@ -130,16 +127,10 @@ class MainActivity : AppCompatActivity() {
             updateCurrentClassStatus()
         }
         // Наблюдаем за расписанием
-        viewModel.weeklySchedule.observe(this, Observer { schedule ->
-            if (schedule.isNotEmpty()) {
-                // Инициализируем панель дней недели только когда расписание загружено
-                setupDaysPanel()
-                // Устанавливаем расписание на выбранный день
-                updateScheduleForSelectedDay()
-
-                // Обновляем Toolbar
-                updateToolbarTitle()  // ← Теперь это обновит toolbarSubtitleTextView
-            }
+        // Пустое расписание тоже показываем — иначе на экране остаются старые данные
+        viewModel.weeklySchedule.observe(this, Observer {
+            updateScheduleForSelectedDay()
+            updateToolbarTitle()
         })
 
         // Наблюдаем за состоянием загрузки
@@ -152,10 +143,23 @@ class MainActivity : AppCompatActivity() {
             }
         })
 
-        // Наблюдаем за ошибками
-        viewModel.error.observe(this, Observer { error ->
-            error?.let {
-                Toast.makeText(this, error, Toast.LENGTH_LONG).show()
+        // Результат загрузки: ошибки показываем всегда, успех — только после ручного обновления
+        viewModel.loadResult.observe(this, Observer { event ->
+            when (val result = event.getContentIfNotHandled()) {
+                is LoadResult.Failure -> Toast.makeText(
+                    this,
+                    "❌ Ошибка загрузки\n${getReadableError(result.error)}",
+                    Toast.LENGTH_LONG
+                ).show()
+                LoadResult.Success -> {
+                    val message = if (isTemporaryView) {
+                        "✅ Временный просмотр обновлен"
+                    } else {
+                        "✅ Ваше расписание обновлено"
+                    }
+                    Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+                }
+                null -> Unit
             }
         })
     }
@@ -194,24 +198,10 @@ class MainActivity : AppCompatActivity() {
     private fun getDateForDay(targetDay: Int): String {
         val calendar = Calendar.getInstance()
 
-        // 1. Находим понедельник текущей недели
-        calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
-
-        // 2. Добавляем смещение недель
-        calendar.add(Calendar.WEEK_OF_YEAR, weekOffset)
-
-        // 3. Добавляем нужное количество дней от понедельника
-        val daysToAdd = when (targetDay) {
-            Calendar.SUNDAY -> 6
-            Calendar.MONDAY -> 0
-            Calendar.TUESDAY -> 1
-            Calendar.WEDNESDAY -> 2
-            Calendar.THURSDAY -> 3
-            Calendar.FRIDAY -> 4
-            Calendar.SATURDAY -> 5
-            else -> 0
-        }
-
+        // Считаем от понедельника вручную: Calendar.set(DAY_OF_WEEK) зависит от локали
+        // (в США неделя начинается с воскресенья, и в воскресенье получался следующий понедельник)
+        val today = calendar.get(Calendar.DAY_OF_WEEK)
+        val daysToAdd = ScheduleLogic.daysFromMonday(targetDay) - ScheduleLogic.daysFromMonday(today) + 7 * weekOffset
         calendar.add(Calendar.DAY_OF_MONTH, daysToAdd)
 
         return formatDateWithCapitalMonth(calendar.time)
@@ -232,6 +222,11 @@ class MainActivity : AppCompatActivity() {
     }
     private fun getCurrentDayOfWeek(): Int {
         return Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
+    }
+
+    // Тот же день недели на следующей неделе — уже не «сегодня»
+    private fun isSelectedDayToday(): Boolean {
+        return weekOffset == 0 && selectedDay == getCurrentDayOfWeek()
     }
     private fun refreshUI() {
         Log.d("REFRESH_UI", "=== НАЧАЛО ОБНОВЛЕНИЯ UI ===")
@@ -375,41 +370,24 @@ class MainActivity : AppCompatActivity() {
 
     // Обновление расписания для выбранного дня
     private fun updateScheduleForSelectedDay() {
-        // Получаем расписание для выбранного дня из ViewModel
         val schedule = viewModel.getScheduleForDay(selectedDay)
-        val activeSchedule = schedule.filter { !it.cancelled }
 
-        // Создаем кастомный адаптер
-        val adapter = ScheduleAdapter(this, schedule, selectedDay == getCurrentDayOfWeek())
-
-        // Устанавливаем адаптер для ListView
-        scheduleListView.adapter = adapter
-
-        // Управляем видимостью заголовка "Расписание:"
-        val isSunday = selectedDay == Calendar.SUNDAY
+        scheduleListView.adapter = ScheduleAdapter(this, schedule, isSelectedDayToday())
 
         // Воскресенье всегда скрываем, другие дни - только если нет пар
-        if (isSunday || schedule.isEmpty()) {
-            scheduleTitleTextView.visibility = View.GONE
-        } else {
-            scheduleTitleTextView.visibility = View.VISIBLE
-        }
+        val isSunday = selectedDay == Calendar.SUNDAY
+        scheduleTitleTextView.visibility = if (isSunday || schedule.isEmpty()) View.GONE else View.VISIBLE
 
         // Обновляем статус (перерыв, пар нет и т.д.)
         updateCurrentClassStatus()
         updateToolbarDateForSelectedDay()
     }
+
     private fun updateToolbarDateForSelectedDay() {
-        // Если выбран не сегодняшний день
-        if (selectedDay != getCurrentDayOfWeek()) {  // ← ИСПРАВЬТЕ ЗДЕСЬ
-            val selectedDate = getDateForDay(selectedDay)
-            toolbarDateTextView.text = " | $selectedDate"
-        } else {
-            // Показываем сегодняшнюю дату
-            val currentDate = getCurrentDateFormatted()
-            toolbarDateTextView.text = " | $currentDate"
-        }
+        // getDateForDay учитывает weekOffset, поэтому на следующей неделе дата тоже верная
+        toolbarDateTextView.text = " | ${getDateForDay(selectedDay)}"
     }
+
     private fun setupToolbar() {
         toolbar = findViewById(R.id.toolbar)
         setSupportActionBar(toolbar)
@@ -459,130 +437,55 @@ class MainActivity : AppCompatActivity() {
 
     // Функция для обновления статуса текущей пары
     private fun updateCurrentClassStatus() {
-        val today = getCurrentDayOfWeek()
-
-        // 1. Получаем расписание для выбранного дня
         val schedule = viewModel.getScheduleForDay(selectedDay)
-        val activeSchedule = schedule.filter { !it.cancelled }
+        val activeSchedule = ScheduleLogic.activeSorted(schedule)
 
-        // 2. Проверяем, воскресенье ли (единственный выходной)
-        val isSunday = selectedDay == Calendar.SUNDAY
-
-        // 3. Для воскресенья всегда "Пар нет"
-        if (isSunday) {
-            currentClassTextView.text = "Пар нет"
-            currentClassTextView.setBackgroundColor(ContextCompat.getColor(this, R.color.colorPastClass))
-            currentClassTextView.visibility = View.VISIBLE
+        // Воскресенье — единственный выходной
+        if (selectedDay == Calendar.SUNDAY) {
+            showStatus("Пар нет", R.color.colorPastClass)
             return
         }
 
-        // 4. Проверяем, сегодня ли выбранный день
-        val isToday = selectedDay == today
-
-        // 5. Если это следующая неделя
+        // Следующая неделя
         if (weekOffset > 0) {
             if (activeSchedule.isEmpty()) {
-                currentClassTextView.text = "Пар нет (следующая неделя)"
-                currentClassTextView.setBackgroundColor(ContextCompat.getColor(this, R.color.colorPastClass))
-                currentClassTextView.visibility = View.VISIBLE
+                showStatus("Пар нет (следующая неделя)", R.color.colorPastClass)
             } else {
-                val firstClass = activeSchedule.sortedBy { it.startTime }.first()
-                currentClassTextView.text = "Следующая неделя: пары начнутся в ${firstClass.startTime}"
-                currentClassTextView.setBackgroundColor(ContextCompat.getColor(this, R.color.colorFutureClass))
-                currentClassTextView.visibility = View.VISIBLE
+                showStatus("Следующая неделя: пары начнутся в ${activeSchedule.first().startTime}", R.color.colorFutureClass)
             }
             return
         }
 
-        // 6. Если выбран другой день (не сегодня) текущей недели
-        if (!isToday) {
+        // Другой день текущей недели: статус показываем, только если пар нет
+        if (!isSelectedDayToday()) {
             if (activeSchedule.isEmpty()) {
-                currentClassTextView.text = "Пар нет"
-                currentClassTextView.setBackgroundColor(ContextCompat.getColor(this, R.color.colorPastClass))
-                currentClassTextView.visibility = View.VISIBLE
+                showStatus("Пар нет", R.color.colorPastClass)
             } else {
-                // Не показываем статус для других дней
                 currentClassTextView.visibility = View.GONE
             }
             return
         }
 
-        // 7. ЛОГИКА ДЛЯ СЕГОДНЯШНЕГО ДНЯ (пн-сб)
-        processTodaySchedule(schedule, activeSchedule)
+        val now = ScheduleLogic.minutesOfDay(Calendar.getInstance())
+        when (val status = ScheduleLogic.todayStatus(schedule, now)) {
+            DayStatus.NoClasses -> showStatus("Пар нет", R.color.colorPastClass)
+            is DayStatus.BeforeFirst -> showStatus("Пары начинаются в ${status.first.startTime}", R.color.colorPastClass)
+            is DayStatus.InProgress -> showStatus(
+                "Сейчас: ${status.current.subject} (${formatTimeLeft(status.minutesLeft)})",
+                R.color.colorCurrentClass
+            )
+            is DayStatus.Break -> showStatus(
+                "Перерыв. Следующая: ${status.next.subject} в ${status.next.startTime}",
+                R.color.colorPastClass
+            )
+            DayStatus.Finished -> showStatus("Пары закончились", R.color.colorPastClass)
+        }
     }
 
-    private fun processTodaySchedule(schedule: List<UniversityClass>, activeSchedule: List<UniversityClass>) {
-        if (activeSchedule.isEmpty()) {
-            currentClassTextView.apply {
-                text = "Пар нет"
-                setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.colorPastClass))
-                visibility = View.VISIBLE
-            }
-            return
-        }
-
-        val sortedSchedule = activeSchedule.sortedBy { it.startTime }
-        val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val currentTime = timeFormat.format(Date())
-
-        val currentClass = viewModel.getCurrentClass(selectedDay, getCurrentDayOfWeek())
-        val activeCurrentClass = currentClass?.takeIf { !it.cancelled }
-
-        if (activeCurrentClass != null) {
-            // Текущая активная пара
-            val endTime = timeFormat.parse(activeCurrentClass.endTime) ?: return
-            val current = timeFormat.parse(currentTime) ?: return
-            val diff = endTime.time - current.time
-            val totalMinutes = (diff / (60 * 1000)).toInt()
-
-            currentClassTextView.apply {
-                text = "Сейчас: ${activeCurrentClass.subject} (${formatTimeLeft(totalMinutes)})"
-                setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.colorCurrentClass))
-                visibility = View.VISIBLE
-            }
-        } else {
-            // Нет текущей активной пары
-            val firstClass = sortedSchedule.first()
-            val lastClass = sortedSchedule.last()
-
-            when {
-                currentTime < firstClass.startTime -> {
-                    // До первой пары
-                    currentClassTextView.apply {
-                        text = "Пары начинаются в ${firstClass.startTime}"
-                        setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.colorPastClass))
-                        visibility = View.VISIBLE
-                    }
-                }
-                currentTime > lastClass.endTime -> {
-                    // После всех пар
-                    currentClassTextView.apply {
-                        text = "Пары закончились"
-                        setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.colorPastClass))
-                        visibility = View.VISIBLE
-                    }
-                }
-                else -> {
-                    // Перерыв между парами
-                    val nextClass = viewModel.getNextClass(selectedDay, getCurrentDayOfWeek())
-                    val activeNextClass = nextClass?.takeIf { !it.cancelled }
-
-                    if (activeNextClass != null) {
-                        currentClassTextView.apply {
-                            text = "Перерыв. Следующая: ${activeNextClass.subject} в ${activeNextClass.startTime}"
-                            setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.colorPastClass))
-                            visibility = View.VISIBLE
-                        }
-                    } else {
-                        currentClassTextView.apply {
-                            text = "Пары закончились"
-                            setBackgroundColor(ContextCompat.getColor(this@MainActivity, R.color.colorPastClass))
-                            visibility = View.VISIBLE
-                        }
-                    }
-                }
-            }
-        }
+    private fun showStatus(text: String, colorRes: Int) {
+        currentClassTextView.text = text
+        currentClassTextView.setBackgroundColor(ContextCompat.getColor(this, colorRes))
+        currentClassTextView.visibility = View.VISIBLE
     }
 
     private fun formatTimeLeft(totalMinutes: Int): String {
@@ -655,45 +558,16 @@ class MainActivity : AppCompatActivity() {
 
         Log.d("REFRESH", "Загружаем расписание для: subgroup=$subgroup, interest=$interest")
 
-        // 3. Показываем индикатор загрузки
-        scheduleTitleTextView.text = "🔄 Обновление..."
-
-        // 4. Перезагружаем расписание
-        viewModel.loadSchedule(subgroup, interest)
-
-        // 5. Отслеживаем результат
-        scheduleListView.postDelayed({
-            viewModel.error.value?.let { error ->
-                scheduleTitleTextView.text = "📖 Расписание:"
-                Toast.makeText(
-                    this,
-                    "❌ Ошибка обновления\n${getReadableError(error)}",
-                    Toast.LENGTH_LONG
-                ).show()
-            } ?: run {
-                updateScheduleForSelectedDay()
-                updateCurrentClassStatus()
-                updateToolbarDateForSelectedDay()
-                scheduleTitleTextView.text = "📖 Расписание:"
-
-                val message = if (isTemporaryView) {
-                    "✅ Временный просмотр обновлен"
-                } else {
-                    "✅ Ваше расписание обновлено"
-                }
-                Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
-            }
-        }, 2000)
+        // Результат придёт в наблюдатель viewModel.loadResult
+        viewModel.loadSchedule(subgroup, interest, userInitiated = true)
     }
 
-    // Добавьте этот метод в MainActivity (после refreshSchedule())
-    private fun getReadableError(error: String): String {
-        return when {
-            error.contains("timeout", ignoreCase = true) -> "Таймаут соединения"
-            error.contains("host", ignoreCase = true) -> "Сервер недоступен"
-            error.contains("network", ignoreCase = true) -> "Проблемы с сетью"
-            error.contains("failed to connect", ignoreCase = true) -> "Не удалось подключиться"
-            else -> "Ошибка загрузки данных"
+    private fun getReadableError(error: LoadError): String {
+        return when (error) {
+            LoadError.OFFLINE -> "Нет соединения с сервером"
+            LoadError.NOT_FOUND -> "Расписание для этой группы не найдено"
+            LoadError.BAD_DATA -> "Расписание на сервере заполнено с ошибкой"
+            LoadError.UNKNOWN -> "Ошибка загрузки данных"
         }
     }
 
@@ -762,7 +636,12 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 if (subgroup == currentSubgroup && interest == currentInterest) {
-                    Toast.makeText(this, "Это ваша текущая группа", Toast.LENGTH_SHORT).show()
+                    // Из временного просмотра выбор своей группы возвращает к ней
+                    if (isTemporaryView) {
+                        returnToMyGroup()
+                    } else {
+                        Toast.makeText(this, "Это ваша текущая группа", Toast.LENGTH_SHORT).show()
+                    }
                     return@setItems
                 }
 
@@ -855,15 +734,8 @@ class MainActivity : AppCompatActivity() {
             viewModel.loadSchedule(subgroup, interest)
         }
 
-        // Обновляем UI
-        refreshUI()
-
-        // Запускаем таймер только если выбран сегодняшний день
-        if (selectedDay == getCurrentDayOfWeek()) {
-            startTimeUpdates()
-        } else {
-            stopTimeUpdates()
-        }
+        // Таймер работает всегда: пользователь может переключиться на сегодня позже
+        startTimeUpdates()
     }
 
     override fun onPause() {
@@ -885,7 +757,7 @@ class MainActivity : AppCompatActivity() {
                     runOnUiThread {
                         if (isDestroyed || isFinishing) return@runOnUiThread
 
-                        if (selectedDay == getCurrentDayOfWeek()) {
+                        if (isSelectedDayToday()) {
                             updateCurrentClassStatus()
                             (scheduleListView.adapter as? ScheduleAdapter)?.notifyDataSetChanged()
                         }
@@ -969,30 +841,23 @@ class MainActivity : AppCompatActivity() {
 
             // Определяем цвета только если это сегодня
             if (isToday) {
-                val currentHour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-                val currentMinute = Calendar.getInstance().get(Calendar.MINUTE)
-                val currentTimeInMinutes = currentHour * 60 + currentMinute
-
-                val startTimeParts = currentClass.startTime.split(":")
-                val endTimeParts = currentClass.endTime.split(":")
-                val startTimeInMinutes = startTimeParts[0].toInt() * 60 + startTimeParts[1].toInt()
-                val endTimeInMinutes = endTimeParts[0].toInt() * 60 + endTimeParts[1].toInt()
+                val now = ScheduleLogic.minutesOfDay(Calendar.getInstance())
 
                 // Используем appContext для получения цветов
-                when {
-                    currentTimeInMinutes in startTimeInMinutes..endTimeInMinutes -> {
+                when (ScheduleLogic.timing(currentClass, now)) {
+                    ClassTiming.CURRENT -> {
                         // Текущая пара - зеленый фон
                         container.setBackgroundColor(
                             ContextCompat.getColor(appContext, R.color.colorCurrentClass)
                         )
                     }
-                    currentTimeInMinutes > endTimeInMinutes -> {
+                    ClassTiming.PAST -> {
                         // Прошедшая пара - серый фон
                         container.setBackgroundColor(
                             ContextCompat.getColor(appContext, R.color.colorPastClass)
                         )
                     }
-                    else -> {
+                    ClassTiming.FUTURE -> {
                         // Будущая пара - белый фон
                         container.setBackgroundColor(
                             ContextCompat.getColor(appContext, R.color.white)

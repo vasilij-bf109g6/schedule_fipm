@@ -1,48 +1,75 @@
 package com.example.universityschedule
 
+import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.firestore.FirebaseFirestoreException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.util.Calendar
-import android.util.Log // Добавляем импорт для логирования
+
+// Одноразовое событие для LiveData: тост не должен показываться повторно после поворота экрана
+class Event<out T>(private val content: T) {
+    private var handled = false
+
+    fun getContentIfNotHandled(): T? {
+        if (handled) return null
+        handled = true
+        return content
+    }
+}
+
+enum class LoadError { OFFLINE, NOT_FOUND, BAD_DATA, UNKNOWN }
+
+sealed class LoadResult {
+    object Success : LoadResult()
+    data class Failure(val error: LoadError) : LoadResult()
+}
 
 class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel() {
 
-    private val _weeklySchedule = MutableLiveData<Map<Int, List<UniversityClass>>>()
+    private val _weeklySchedule = MutableLiveData<Map<Int, List<UniversityClass>>>(emptyMap())
     val weeklySchedule: LiveData<Map<Int, List<UniversityClass>>> = _weeklySchedule
 
-    private val _isLoading = MutableLiveData<Boolean>()
+    private val _isLoading = MutableLiveData(false)
     val isLoading: LiveData<Boolean> = _isLoading
 
-    private val _error = MutableLiveData<String?>()
-    val error: LiveData<String?> = _error
+    // Success приходит только для ручного обновления, Failure — для любой загрузки
+    private val _loadResult = MutableLiveData<Event<LoadResult>>()
+    val loadResult: LiveData<Event<LoadResult>> = _loadResult
 
-    fun loadSchedule(subgroup: Int, interest: String) {
-        Log.d("ScheduleVM", "🔄 Загрузка расписания: подгруппа=$subgroup, интерес=$interest")
+    private var loadJob: Job? = null
+    private var loadGeneration = 0
+    private var loadedKey: String? = null
+
+    fun loadSchedule(subgroup: Int, interest: String, userInitiated: Boolean = false) {
+        val key = "${subgroup}_$interest"
+        val generation = ++loadGeneration
+        loadJob?.cancel()
         _isLoading.value = true
-        _error.value = null
 
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             try {
                 val schedule = repository.getSchedule(subgroup, interest)
-                Log.d("ScheduleVM", "📅 Расписание получено: ${schedule.size} дней")
-
-                // Логируем количество отмененных пар
-                schedule.forEach { (day, classes) ->
-                    val cancelledCount = classes.count { it.cancelled }
-                    if (cancelledCount > 0) {
-                        Log.d("ScheduleVM", "День $day: ${classes.size} пар, из них отменено: $cancelledCount")
-                    }
-                }
-
+                if (generation != loadGeneration) return@launch
+                loadedKey = key
                 _weeklySchedule.value = schedule
+                if (userInitiated) _loadResult.value = Event(LoadResult.Success)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                Log.e("ScheduleVM", "💥 Ошибка: ${e.message}", e)
-                _error.value = "Ошибка загрузки расписания: ${e.message}"
+                if (generation != loadGeneration) return@launch
+                Log.e("ScheduleVM", "Ошибка загрузки расписания $key", e)
+                // Не оставляем на экране расписание другой группы
+                if (loadedKey != key) {
+                    loadedKey = null
+                    _weeklySchedule.value = emptyMap()
+                }
+                _loadResult.value = Event(LoadResult.Failure(e.toLoadError()))
             } finally {
-                _isLoading.value = false
+                if (generation == loadGeneration) _isLoading.value = false
             }
         }
     }
@@ -51,179 +78,10 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
         return _weeklySchedule.value?.get(dayOfWeek) ?: emptyList()
     }
 
-    /**
-     * Получить текущую пару (игнорируя отмененные)
-     * @param selectedDay выбранный день в календаре
-     * @param currentDay текущий день недели
-     * @return текущая активная пара или null
-     */
-    fun getCurrentClass(selectedDay: Int, currentDay: Int): UniversityClass? {
-        if (selectedDay != currentDay) return null
-
-        val schedule = getScheduleForDay(selectedDay)
-        val currentTime = Calendar.getInstance()
-        val timeFormat = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-        val currentTimeStr = timeFormat.format(currentTime.time)
-
-        // Ищем только НЕ отмененные пары
-        return schedule.find { classItem ->
-            !classItem.cancelled &&  // Игнорируем отмененные пары
-                    currentTimeStr >= classItem.startTime &&
-                    currentTimeStr <= classItem.endTime
-        }
-    }
-
-    /**
-     * Получить следующую пару (игнорируя отмененные)
-     * @param selectedDay выбранный день в календаре
-     * @param currentDay текущий день недели
-     * @return следующая активная пара или null
-     */
-    fun getNextClass(selectedDay: Int, currentDay: Int): UniversityClass? {
-        if (selectedDay != currentDay) return null
-
-        val schedule = getScheduleForDay(selectedDay)
-        val currentTime = Calendar.getInstance()
-        val timeFormat = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-        val currentTimeStr = timeFormat.format(currentTime.time)
-
-        // Ищем только НЕ отмененные пары
-        return schedule.find { classItem ->
-            !classItem.cancelled &&  // Игнорируем отмененные пары
-                    currentTimeStr < classItem.startTime
-        }
-    }
-
-    /**
-     * Получить первую пару дня (игнорируя отмененные)
-     * @param dayOfWeek день недели
-     * @return первая активная пара дня или null
-     */
-    fun getFirstClassOfDay(dayOfWeek: Int): UniversityClass? {
-        val schedule = getScheduleForDay(dayOfWeek)
-        return schedule
-            .filter { !it.cancelled }  // Только не отмененные
-            .minByOrNull { it.startTime }  // Самая ранняя по времени начала
-    }
-
-    /**
-     * Получить последнюю пару дня (игнорируя отмененные)
-     * @param dayOfWeek день недели
-     * @return последняя активная пара дня или null
-     */
-    fun getLastClassOfDay(dayOfWeek: Int): UniversityClass? {
-        val schedule = getScheduleForDay(dayOfWeek)
-        return schedule
-            .filter { !it.cancelled }  // Только не отмененные
-            .maxByOrNull { it.endTime }  // Самая поздняя по времени окончания
-    }
-
-    /**
-     * Получить все отмененные пары для указанного дня
-     * @param dayOfWeek день недели
-     * @return список отмененных пар
-     */
-    fun getCancelledClasses(dayOfWeek: Int): List<UniversityClass> {
-        return getScheduleForDay(dayOfWeek)
-            .filter { it.cancelled }
-            .sortedBy { it.startTime }  // Сортировка по времени начала
-    }
-
-    /**
-     * Проверить, есть ли активные (не отмененные) пары в указанный день
-     * @param dayOfWeek день недели
-     * @return true если есть хотя бы одна активная пара
-     */
-    fun hasActiveClasses(dayOfWeek: Int): Boolean {
-        return getScheduleForDay(dayOfWeek)
-            .any { !it.cancelled }
-    }
-
-    /**
-     * Проверить, все ли пары в указанный день отменены
-     * @param dayOfWeek день недели
-     * @return true если все пары отменены
-     */
-    fun isAllClassesCancelled(dayOfWeek: Int): Boolean {
-        val schedule = getScheduleForDay(dayOfWeek)
-        return schedule.isNotEmpty() && schedule.all { it.cancelled }
-    }
-
-    /**
-     * Получить количество активных пар в указанный день
-     * @param dayOfWeek день недели
-     * @return количество не отмененных пар
-     */
-    fun getActiveClassesCount(dayOfWeek: Int): Int {
-        return getScheduleForDay(dayOfWeek)
-            .count { !it.cancelled }
-    }
-
-    /**
-     * Получить количество отмененных пар в указанный день
-     * @param dayOfWeek день недели
-     * @return количество отмененных пар
-     */
-    fun getCancelledClassesCount(dayOfWeek: Int): Int {
-        return getScheduleForDay(dayOfWeek)
-            .count { it.cancelled }
-    }
-
-    /**
-     * Получить пару по её порядковому номеру в дне (игнорируя отмененные)
-     * @param dayOfWeek день недели
-     * @param position позиция (0-based)
-     * @return пара на указанной позиции или null
-     */
-    fun getClassAtPosition(dayOfWeek: Int, position: Int): UniversityClass? {
-        return getScheduleForDay(dayOfWeek)
-            .filter { !it.cancelled }  // Только активные
-            .sortedBy { it.startTime }  // Сортировка по времени
-            .getOrNull(position)        // Получаем по позиции
-    }
-
-    /**
-     * Получить ближайшую следующую пару от текущего времени
-     * (используется для показа "Следующая пара через...")
-     * @param selectedDay выбранный день
-     * @param currentDay текущий день
-     * @return ближайшая следующая активная пара
-     */
-    fun getNearestNextClass(selectedDay: Int, currentDay: Int): UniversityClass? {
-        if (selectedDay != currentDay) return null
-
-        val schedule = getScheduleForDay(selectedDay)
-        val currentTime = Calendar.getInstance()
-        val timeFormat = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
-        val currentTimeStr = timeFormat.format(currentTime.time)
-
-        return schedule
-            .filter { !it.cancelled && currentTimeStr < it.startTime }  // Активные, которые еще не начались
-            .minByOrNull { it.startTime }  // Ближайшая по времени начала
-    }
-
-    /**
-     * Проверить, есть ли пары прямо сейчас (в текущий момент времени)
-     * @param selectedDay выбранный день
-     * @param currentDay текущий день
-     * @return true если идет хоть одна активная пара
-     */
-    fun isClassInProgress(selectedDay: Int, currentDay: Int): Boolean {
-        return getCurrentClass(selectedDay, currentDay) != null
-    }
-
-    /**
-     * Получить список всех пар на день с учетом фильтрации
-     * @param dayOfWeek день недели
-     * @param showCancelled показывать ли отмененные пары
-     * @return список пар
-     */
-    fun getClassesForDay(dayOfWeek: Int, showCancelled: Boolean = false): List<UniversityClass> {
-        val schedule = getScheduleForDay(dayOfWeek)
-        return if (showCancelled) {
-            schedule.sortedBy { it.startTime }  // Все пары с сортировкой
-        } else {
-            schedule.filter { !it.cancelled }.sortedBy { it.startTime }  // Только активные
-        }
+    private fun Exception.toLoadError(): LoadError = when {
+        this is ScheduleNotFoundException -> LoadError.NOT_FOUND
+        this is InvalidScheduleException -> LoadError.BAD_DATA
+        this is FirebaseFirestoreException && code == FirebaseFirestoreException.Code.UNAVAILABLE -> LoadError.OFFLINE
+        else -> LoadError.UNKNOWN
     }
 }
