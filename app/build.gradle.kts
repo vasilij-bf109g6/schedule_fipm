@@ -9,7 +9,8 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.universityschedule"
+        // Идентификатор в Google Play и Firebase; namespace (пакет кода) остался прежним
+        applicationId = "ru.pstgu.fipm.schedule"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
