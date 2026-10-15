@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 
 // Одноразовое событие для LiveData: тост не должен показываться повторно после поворота экрана
@@ -23,7 +24,7 @@ class Event<out T>(private val content: T) {
 
 enum class LoadError { OFFLINE, NOT_FOUND, BAD_DATA, UNKNOWN }
 
-// Успешно загруженное расписание вместе с группой — для кэша напоминаний
+// Успешно загруженное расписание вместе с группой — для кэша напоминаний и виджета
 data class LoadedSchedule(val subgroup: Int, val interest: String, val schedule: Map<Int, List<UniversityClass>>)
 
 sealed class LoadResult {
@@ -39,50 +40,118 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
     private val _isLoading = MutableLiveData(false)
     val isLoading: LiveData<Boolean> = _isLoading
 
+    // true — на экране данные из кэша: нет связи с сервером
+    private val _isFromCache = MutableLiveData(false)
+    val isFromCache: LiveData<Boolean> = _isFromCache
+
     // Success приходит только для ручного обновления, Failure — для любой загрузки
     private val _loadResult = MutableLiveData<Event<LoadResult>>()
     val loadResult: LiveData<Event<LoadResult>> = _loadResult
 
+    // Публикуется только при настоящем изменении расписания
     private val _loadedSchedule = MutableLiveData<LoadedSchedule>()
     val loadedSchedule: LiveData<LoadedSchedule> = _loadedSchedule
 
-    private var loadJob: Job? = null
-    private var loadGeneration = 0
-    private var loadedKey: String? = null
+    private var watchJob: Job? = null
+    private var watchedKey: String? = null
+    private var publishedKey: String? = null
+    // Подписка присылает одно и то же состояние несколько раз — показываем ошибку один раз
+    private var lastError: LoadError? = null
 
-    fun loadSchedule(subgroup: Int, interest: String, userInitiated: Boolean = false) {
+    // Подписаться на расписание группы. Повторный вызов для той же группы ничего не делает
+    fun watchSchedule(subgroup: Int, interest: String) {
         val key = "${subgroup}_$interest"
-        val generation = ++loadGeneration
-        loadJob?.cancel()
+        if (key == watchedKey && watchJob?.isActive == true) return
+
+        watchJob?.cancel()
+        if (key != watchedKey) {
+            // Не оставляем на экране расписание другой группы
+            _weeklySchedule.value = emptyMap()
+            _isFromCache.value = false
+            publishedKey = null
+        }
+        watchedKey = key
+        lastError = null
         _isLoading.value = true
 
-        loadJob = viewModelScope.launch {
+        watchJob = viewModelScope.launch {
+            repository.observeSchedule(subgroup, interest)
+                .catch { e ->
+                    Log.e("ScheduleVM", "Подписка на расписание $key оборвалась", e)
+                    _isLoading.value = false
+                    reportError((e as? Exception)?.toLoadError() ?: LoadError.UNKNOWN)
+                }
+                .collect { update -> handleUpdate(update, subgroup, interest) }
+        }
+    }
+
+    // Экран не виден — отписываемся, чтобы не держать соединение
+    fun stopWatching() {
+        watchJob?.cancel()
+        watchJob = null
+    }
+
+    // Ручное обновление: запрос прямо к серверу. Подписка при этом продолжает работать
+    fun refresh(subgroup: Int, interest: String) {
+        val key = "${subgroup}_$interest"
+        _isLoading.value = true
+
+        viewModelScope.launch {
             try {
-                val schedule = repository.getSchedule(subgroup, interest)
-                if (generation != loadGeneration) return@launch
-                loadedKey = key
-                _weeklySchedule.value = schedule
-                _loadedSchedule.value = LoadedSchedule(subgroup, interest, schedule)
-                if (userInitiated) _loadResult.value = Event(LoadResult.Success)
+                val schedule = repository.fetchFromServer(subgroup, interest)
+                if (key == watchedKey) {
+                    _isFromCache.value = false
+                    publish(schedule, subgroup, interest)
+                }
+                _loadResult.value = Event(LoadResult.Success)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (generation != loadGeneration) return@launch
-                Log.e("ScheduleVM", "Ошибка загрузки расписания $key", e)
-                // Не оставляем на экране расписание другой группы
-                if (loadedKey != key) {
-                    loadedKey = null
-                    _weeklySchedule.value = emptyMap()
-                }
+                Log.e("ScheduleVM", "Ошибка обновления расписания $key", e)
                 _loadResult.value = Event(LoadResult.Failure(e.toLoadError()))
             } finally {
-                if (generation == loadGeneration) _isLoading.value = false
+                _isLoading.value = false
             }
         }
     }
 
     fun getScheduleForDay(dayOfWeek: Int): List<UniversityClass> {
         return _weeklySchedule.value?.get(dayOfWeek) ?: emptyList()
+    }
+
+    private fun handleUpdate(update: ScheduleUpdate, subgroup: Int, interest: String) {
+        _isLoading.value = false
+        when (update) {
+            is ScheduleUpdate.Loaded -> {
+                lastError = null
+                _isFromCache.value = update.fromCache
+                publish(update.schedule, subgroup, interest)
+            }
+            is ScheduleUpdate.Missing -> {
+                _isFromCache.value = update.fromCache
+                _weeklySchedule.value = emptyMap()
+                publishedKey = null
+                // Документа нет в кэше и нет связи — это «нет сети», а не «нет расписания»
+                reportError(if (update.fromCache) LoadError.OFFLINE else LoadError.NOT_FOUND)
+            }
+            // Оставляем на экране последнее корректное расписание этой группы
+            ScheduleUpdate.Invalid -> reportError(LoadError.BAD_DATA)
+        }
+    }
+
+    private fun publish(schedule: Map<Int, List<UniversityClass>>, subgroup: Int, interest: String) {
+        val key = "${subgroup}_$interest"
+        if (key == publishedKey && schedule == _weeklySchedule.value) return
+        Log.d("ScheduleVM", "Расписание $key обновлено: ${schedule.size} дней")
+        publishedKey = key
+        _weeklySchedule.value = schedule
+        _loadedSchedule.value = LoadedSchedule(subgroup, interest, schedule)
+    }
+
+    private fun reportError(error: LoadError) {
+        if (error == lastError) return
+        lastError = error
+        _loadResult.value = Event(LoadResult.Failure(error))
     }
 
     private fun Exception.toLoadError(): LoadError = when {

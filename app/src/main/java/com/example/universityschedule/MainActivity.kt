@@ -82,7 +82,7 @@ class MainActivity : AppCompatActivity() {
         initViews()
         setupDaysPanel()
 
-        // Само расписание загружается в onResume
+        // Подписка на расписание включается в onStart и выключается в onStop
         viewModel = ViewModelProvider(this, ViewModelFactory(ScheduleRepository()))[ScheduleViewModel::class.java]
 
         btnNextWeek.setOnClickListener {
@@ -106,9 +106,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        viewModel.isLoading.observe(this) { isLoading ->
-            scheduleTitleTextView.setText(if (isLoading) R.string.schedule_title_loading else R.string.schedule_title)
-        }
+        viewModel.isLoading.observe(this) { updateScheduleTitle() }
+        viewModel.isFromCache.observe(this) { updateScheduleTitle() }
 
         // Ошибки показываем всегда, успех — только после ручного обновления
         viewModel.loadResult.observe(this) { event ->
@@ -124,11 +123,17 @@ class MainActivity : AppCompatActivity() {
         startMinuteTicker()
     }
 
-    override fun onResume() {
-        super.onResume()
+    override fun onStart() {
+        super.onStart()
         invalidateOptionsMenu()
         updateToolbar()
-        loadActiveGroup()
+        watchActiveGroup()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // В фоне подписка не нужна: напоминания и виджет работают по сохранённому расписанию
+        viewModel.stopWatching()
     }
 
     private fun initViews() {
@@ -141,9 +146,21 @@ class MainActivity : AppCompatActivity() {
         findViewById<RecyclerView>(R.id.scheduleRecyclerView).adapter = scheduleAdapter
     }
 
-    private fun loadActiveGroup(userInitiated: Boolean = false) {
+    // Изменения в Firestore приходят сразу, пока экран открыт
+    private fun watchActiveGroup() {
         val group = settings.activeGroup ?: return
-        viewModel.loadSchedule(group.subgroup, group.interest.key, userInitiated)
+        viewModel.watchSchedule(group.subgroup, group.interest.key)
+    }
+
+    // «Загрузка…», «Расписание (оффлайн)» — если данные из кэша, или обычный заголовок
+    private fun updateScheduleTitle() {
+        scheduleTitleTextView.setText(
+            when {
+                viewModel.isLoading.value == true -> R.string.schedule_title_loading
+                viewModel.isFromCache.value == true -> R.string.schedule_title_offline
+                else -> R.string.schedule_title
+            }
+        )
     }
 
     // Раз в минуту обновляем статус и подсветку; работает, пока экран виден
@@ -358,14 +375,14 @@ class MainActivity : AppCompatActivity() {
     private fun refreshSchedule() {
         if (!NetworkUtils.isNetworkAvailable(this)) {
             toast(getString(R.string.refresh_no_network), Toast.LENGTH_LONG)
-            scheduleTitleTextView.setText(R.string.schedule_title_offline)
             return
         }
 
         val isTemporary = settings.temporaryGroup != null
         toast(getString(if (isTemporary) R.string.refresh_started_temporary else R.string.refresh_started_mine))
         // Результат придёт в наблюдатель viewModel.loadResult
-        loadActiveGroup(userInitiated = true)
+        val group = settings.activeGroup ?: return
+        viewModel.refresh(group.subgroup, group.interest.key)
     }
 
     private fun getReadableError(error: LoadError): String = getString(
@@ -470,7 +487,7 @@ class MainActivity : AppCompatActivity() {
                 settings.temporaryGroup = group
                 invalidateOptionsMenu()
                 updateToolbar()
-                loadActiveGroup()
+                watchActiveGroup()
                 toast(getString(R.string.toast_group_loaded, group.fullName(this)))
             }
             .setNegativeButton(R.string.cancel, null)
@@ -483,7 +500,7 @@ class MainActivity : AppCompatActivity() {
         settings.temporaryGroup = null
         invalidateOptionsMenu()
         updateToolbar()
-        loadActiveGroup()
+        watchActiveGroup()
         toast(getString(R.string.toast_returned_to_my_group))
     }
 
