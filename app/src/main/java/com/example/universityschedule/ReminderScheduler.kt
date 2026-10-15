@@ -22,16 +22,18 @@ object ReminderScheduler {
     const val EXTRA_START_TIME = "start_time"
     const val EXTRA_START_AT = "start_at"
 
-    // Расписание своей группы загрузилось — запоминаем его и переставляем будильник
+    // Расписание своей группы загрузилось — запоминаем его, переставляем будильник и обновляем виджет
     fun onScheduleLoaded(context: Context, schedule: Map<Int, List<UniversityClass>>) {
         ScheduleCache(context).save(schedule)
         reschedule(context)
+        ScheduleWidget.updateAll(context)
     }
 
     // Своя группа сменилась — старое расписание больше не актуально
     fun onGroupChanged(context: Context) {
         ScheduleCache(context).clear()
         reschedule(context)
+        ScheduleWidget.updateAll(context)
     }
 
     fun reschedule(context: Context) {

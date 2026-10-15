@@ -76,7 +76,8 @@ class ReminderReceiver : BroadcastReceiver() {
     }
 }
 
-// Будильники сбрасываются после перезагрузки, смены времени и обновления приложения — ставим заново.
+// Будильники сбрасываются после перезагрузки, смены времени и обновления приложения — ставим заново
+// (и будильник напоминания, и будильник обновления виджета).
 // Все действия здесь защищённые системные, а ресивер только пересчитывает будильник.
 class ReminderRescheduleReceiver : BroadcastReceiver() {
 
@@ -86,7 +87,10 @@ class ReminderRescheduleReceiver : BroadcastReceiver() {
             Intent.ACTION_MY_PACKAGE_REPLACED,
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
-            "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" -> ReminderScheduler.reschedule(context)
+            "android.app.action.SCHEDULE_EXACT_ALARM_PERMISSION_STATE_CHANGED" -> {
+                ReminderScheduler.reschedule(context)
+                ScheduleWidget.updateAll(context)
+            }
         }
     }
 }

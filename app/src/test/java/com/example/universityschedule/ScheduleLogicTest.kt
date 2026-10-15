@@ -118,6 +118,38 @@ class ScheduleLogicTest {
     }
 
     @Test
+    fun widgetState_showsCurrentNextOrNothing() {
+        val first = lessonOn(Calendar.MONDAY, "9:00", "first").copy(endTime = "10:30")
+        val second = lessonOn(Calendar.MONDAY, "10:40", "second").copy(endTime = "12:10")
+        val tuesday = lessonOn(Calendar.TUESDAY, "9:00", "tuesday").copy(endTime = "10:30")
+        val schedule = mapOf(Calendar.MONDAY to listOf(first, second), Calendar.TUESDAY to listOf(tuesday))
+
+        assertEquals(WidgetState.Current(first, second), ScheduleLogic.widgetState(schedule, monday("09:30")))
+        assertEquals(WidgetState.Current(second, null), ScheduleLogic.widgetState(schedule, monday("11:00")))
+
+        val beforeFirst = ScheduleLogic.widgetState(schedule, monday("08:00")) as WidgetState.Upcoming
+        assertEquals(first, beforeFirst.next.universityClass)
+        assertEquals(0, beforeFirst.next.dayOffset)
+
+        val evening = ScheduleLogic.widgetState(schedule, monday("18:00")) as WidgetState.Upcoming
+        assertEquals(tuesday, evening.next.universityClass)
+        assertEquals(1, evening.next.dayOffset)
+
+        assertEquals(WidgetState.NoClasses, ScheduleLogic.widgetState(emptyMap(), monday("09:30")))
+    }
+
+    @Test
+    fun nextWidgetUpdate_followsClassBoundariesThenMidnight() {
+        val first = lessonOn(Calendar.MONDAY, "9:00", "first").copy(endTime = "10:30")
+        val schedule = mapOf(Calendar.MONDAY to listOf(first))
+
+        assertEquals(monday("09:00").timeInMillis, ScheduleLogic.nextWidgetUpdate(schedule, monday("08:00")))
+        assertEquals(monday("10:30").timeInMillis, ScheduleLogic.nextWidgetUpdate(schedule, monday("09:00")))
+        val midnight = monday("00:00").apply { add(Calendar.DAY_OF_MONTH, 1) }
+        assertEquals(midnight.timeInMillis, ScheduleLogic.nextWidgetUpdate(schedule, monday("10:30")))
+    }
+
+    @Test
     fun todayStatus_ignoresCancelledClasses() {
         val cancelledFirst = lesson("09:00", "10:30", "cancelled", cancelled = true)
         val second = lesson("10:40", "12:10", "second")

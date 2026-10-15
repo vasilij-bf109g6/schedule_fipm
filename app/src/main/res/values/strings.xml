@@ -96,6 +96,18 @@
     <string name="open_settings">Открыть настройки</string>
     <string name="not_now">Не сейчас</string>
 
+    <!-- Виджет -->
+    <string name="widget_name">Расписание: сейчас и далее</string>
+    <string name="widget_description">Текущая и следующая пара вашей группы</string>
+    <string name="widget_now">Сейчас</string>
+    <string name="widget_next_label">Следующая пара</string>
+    <string name="widget_until">до %s</string>
+    <string name="widget_next">Далее: %1$s в %2$s</string>
+    <string name="widget_today_at">Сегодня в %s</string>
+    <string name="widget_tomorrow_at">Завтра в %s</string>
+    <string name="widget_day_at">%1$s в %2$s</string>
+    <string name="widget_no_data">Откройте приложение, чтобы загрузить расписание</string>
+
     <!-- Экран выбора группы -->
     <string name="welcome_title">Добро пожаловать!</string>
     <string name="welcome_choose_subgroup">Выберите подгруппу</string>

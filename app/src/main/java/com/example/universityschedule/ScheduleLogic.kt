@@ -16,8 +16,22 @@ sealed class DayStatus {
     object Finished : DayStatus()
 }
 
-// Напоминание о паре: когда показать и когда пара начинается (миллисекунды epoch)
-data class Reminder(val universityClass: UniversityClass, val triggerAtMillis: Long, val startAtMillis: Long)
+// Напоминание о паре: когда показать и когда пара начинается (миллисекунды epoch).
+// dayOffset — через сколько дней от сегодня пара (0 — сегодня)
+data class Reminder(
+    val universityClass: UniversityClass,
+    val triggerAtMillis: Long,
+    val startAtMillis: Long,
+    val dayOffset: Int
+)
+
+// Что показать в виджете
+sealed class WidgetState {
+    object NoClasses : WidgetState()
+    // Идёт пара; nextToday — следующая пара сегодня, если есть
+    data class Current(val current: UniversityClass, val nextToday: UniversityClass?) : WidgetState()
+    data class Upcoming(val next: Reminder) : WidgetState()
+}
 
 object ScheduleLogic {
 
@@ -70,6 +84,14 @@ object ScheduleLogic {
     // Напоминания, время которых уже прошло, пропускаем — опоздавшее уведомление бесполезно.
     fun nextReminder(schedule: Map<Int, List<UniversityClass>>, now: Calendar, leadMinutes: Int): Reminder? {
         if (leadMinutes <= 0) return null
+        return findNext(schedule, now, leadMinutes)
+    }
+
+    // Ближайшая пара, которая ещё не началась (на любой день вперёд)
+    fun upcomingClass(schedule: Map<Int, List<UniversityClass>>, now: Calendar): Reminder? =
+        findNext(schedule, now, 0)
+
+    private fun findNext(schedule: Map<Int, List<UniversityClass>>, now: Calendar, leadMinutes: Int): Reminder? {
         val nowMillis = now.timeInMillis
 
         for (dayOffset in 0..7) {
@@ -89,10 +111,45 @@ object ScheduleLogic {
                     set(Calendar.MINUTE, start % 60)
                 }.timeInMillis
                 val triggerAt = startAt - leadMinutes * 60_000L
-                if (triggerAt > nowMillis) return Reminder(universityClass, triggerAt, startAt)
+                if (triggerAt > nowMillis) return Reminder(universityClass, triggerAt, startAt, dayOffset)
             }
         }
         return null
+    }
+
+    fun widgetState(schedule: Map<Int, List<UniversityClass>>, now: Calendar): WidgetState {
+        val today = schedule[now.get(Calendar.DAY_OF_WEEK)].orEmpty()
+        val status = todayStatus(today, minutesOfDay(now))
+        val upcoming = upcomingClass(schedule, now)
+
+        return when {
+            status is DayStatus.InProgress ->
+                WidgetState.Current(status.current, upcoming?.takeIf { it.dayOffset == 0 }?.universityClass)
+            upcoming != null -> WidgetState.Upcoming(upcoming)
+            else -> WidgetState.NoClasses
+        }
+    }
+
+    // Когда виджет нужно перерисовать: ближайшее начало или конец пары сегодня, иначе полночь
+    fun nextWidgetUpdate(schedule: Map<Int, List<UniversityClass>>, now: Calendar): Long {
+        val nowMinutes = minutesOfDay(now)
+        val boundary = activeSorted(schedule[now.get(Calendar.DAY_OF_WEEK)].orEmpty())
+            .flatMap { listOfNotNull(toMinutes(it.startTime), toMinutes(it.endTime)) }
+            .filter { it > nowMinutes }
+            .minOrNull()
+
+        return (now.clone() as Calendar).apply {
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            if (boundary != null) {
+                set(Calendar.HOUR_OF_DAY, boundary / 60)
+                set(Calendar.MINUTE, boundary % 60)
+            } else {
+                add(Calendar.DAY_OF_MONTH, 1)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+            }
+        }.timeInMillis
     }
 
     // Статус для сегодняшнего дня: отменённые пары не учитываются

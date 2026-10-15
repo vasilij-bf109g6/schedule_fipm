@@ -57,6 +57,9 @@ class ScheduleCache(context: Context) {
         }
     }
 
+    // false — расписание своей группы ещё ни разу не загружалось
+    fun hasData(): Boolean = prefs.contains(KEY_SCHEDULE)
+
     fun clear() {
         prefs.edit { remove(KEY_SCHEDULE) }
     }
