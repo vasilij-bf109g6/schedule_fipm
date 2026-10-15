@@ -70,6 +70,53 @@ class ScheduleLogicTest {
         assertEquals(DayStatus.Finished, ScheduleLogic.todayStatus(day, at("12:10")))
     }
 
+    // Понедельник, 12 октября 2026, в часовом поясе Москвы
+    private fun monday(time: String): Calendar = Calendar.getInstance(java.util.TimeZone.getTimeZone("Europe/Moscow")).apply {
+        clear()
+        set(2026, Calendar.OCTOBER, 12)
+        val minutes = at(time)
+        set(Calendar.HOUR_OF_DAY, minutes / 60)
+        set(Calendar.MINUTE, minutes % 60)
+    }
+
+    private fun lessonOn(day: Int, start: String, subject: String, cancelled: Boolean = false) =
+        lesson(start, "23:00", subject, cancelled).copy(dayOfWeek = day)
+
+    @Test
+    fun nextReminder_picksNextClassToday() {
+        val first = lessonOn(Calendar.MONDAY, "9:00", "first")
+        val second = lessonOn(Calendar.MONDAY, "10:40", "second")
+        val schedule = mapOf(Calendar.MONDAY to listOf(second, first))
+
+        val reminder = ScheduleLogic.nextReminder(schedule, monday("08:00"), 15)!!
+        assertEquals(first, reminder.universityClass)
+        assertEquals(monday("08:45").timeInMillis, reminder.triggerAtMillis)
+        assertEquals(monday("09:00").timeInMillis, reminder.startAtMillis)
+
+        // Время напоминания о первой паре уже прошло — берём вторую
+        assertEquals(second, ScheduleLogic.nextReminder(schedule, monday("08:50"), 15)!!.universityClass)
+    }
+
+    @Test
+    fun nextReminder_skipsCancelledAndWrapsToNextWeek() {
+        val cancelled = lessonOn(Calendar.WEDNESDAY, "9:00", "cancelled", cancelled = true)
+        val mondayClass = lessonOn(Calendar.MONDAY, "9:00", "monday")
+        val schedule = mapOf(Calendar.MONDAY to listOf(mondayClass), Calendar.WEDNESDAY to listOf(cancelled))
+
+        // Пары понедельника уже прошли, среда отменена — следующее напоминание через неделю
+        val reminder = ScheduleLogic.nextReminder(schedule, monday("12:00"), 10)!!
+        assertEquals(mondayClass, reminder.universityClass)
+        val nextMonday = monday("08:50").apply { add(Calendar.DAY_OF_MONTH, 7) }
+        assertEquals(nextMonday.timeInMillis, reminder.triggerAtMillis)
+    }
+
+    @Test
+    fun nextReminder_offOrEmpty() {
+        val schedule = mapOf(Calendar.MONDAY to listOf(lessonOn(Calendar.MONDAY, "9:00", "first")))
+        assertNull(ScheduleLogic.nextReminder(schedule, monday("08:00"), 0))
+        assertNull(ScheduleLogic.nextReminder(emptyMap(), monday("08:00"), 15))
+    }
+
     @Test
     fun todayStatus_ignoresCancelledClasses() {
         val cancelledFirst = lesson("09:00", "10:30", "cancelled", cancelled = true)

@@ -16,6 +16,9 @@ sealed class DayStatus {
     object Finished : DayStatus()
 }
 
+// Напоминание о паре: когда показать и когда пара начинается (миллисекунды epoch)
+data class Reminder(val universityClass: UniversityClass, val triggerAtMillis: Long, val startAtMillis: Long)
+
 object ScheduleLogic {
 
     // Порядок дней в панели: ПН ... ВС
@@ -60,6 +63,36 @@ object ScheduleLogic {
             nowMinutes >= start -> ClassTiming.CURRENT
             else -> ClassTiming.FUTURE
         }
+    }
+
+    // Ближайшее напоминание после now. Расписание повторяется каждую неделю,
+    // поэтому смотрим 8 дней вперёд: сегодня и тот же день недели через неделю.
+    // Напоминания, время которых уже прошло, пропускаем — опоздавшее уведомление бесполезно.
+    fun nextReminder(schedule: Map<Int, List<UniversityClass>>, now: Calendar, leadMinutes: Int): Reminder? {
+        if (leadMinutes <= 0) return null
+        val nowMillis = now.timeInMillis
+
+        for (dayOffset in 0..7) {
+            val day = (now.clone() as Calendar).apply {
+                add(Calendar.DAY_OF_MONTH, dayOffset)
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val classes = activeSorted(schedule[day.get(Calendar.DAY_OF_WEEK)].orEmpty())
+
+            for (universityClass in classes) {
+                val start = toMinutes(universityClass.startTime) ?: continue
+                val startAt = (day.clone() as Calendar).apply {
+                    set(Calendar.HOUR_OF_DAY, start / 60)
+                    set(Calendar.MINUTE, start % 60)
+                }.timeInMillis
+                val triggerAt = startAt - leadMinutes * 60_000L
+                if (triggerAt > nowMillis) return Reminder(universityClass, triggerAt, startAt)
+            }
+        }
+        return null
     }
 
     // Статус для сегодняшнего дня: отменённые пары не учитываются

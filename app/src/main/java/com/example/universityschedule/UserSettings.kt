@@ -71,11 +71,17 @@ class UserSettings(context: Context) {
     val activeGroup: Group?
         get() = temporaryGroup ?: myGroup
 
+    // За сколько минут до пары напоминать; 0 — напоминания выключены
+    var reminderLeadMinutes: Int
+        get() = prefs.getInt(KEY_REMINDER_LEAD, 0)
+        set(value) = prefs.edit { putInt(KEY_REMINDER_LEAD, value) }
+
     private companion object {
         const val KEY_SUBGROUP = "subgroup"
         const val KEY_INTEREST = "interest_group"
         const val KEY_TEMP_VIEW = "is_temporary_view"
         const val KEY_TEMP_SUBGROUP = "temp_subgroup"
         const val KEY_TEMP_INTEREST = "temp_interest"
+        const val KEY_REMINDER_LEAD = "reminder_lead_minutes"
     }
 }

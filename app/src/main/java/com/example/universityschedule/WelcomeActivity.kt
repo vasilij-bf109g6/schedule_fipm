@@ -56,7 +56,12 @@ class WelcomeActivity : AppCompatActivity() {
     }
 
     private fun saveSettingsAndContinue() {
-        settings.myGroup = Group(selectedSubgroup, selectedInterest)
+        val newGroup = Group(selectedSubgroup, selectedInterest)
+        if (newGroup != settings.myGroup) {
+            settings.myGroup = newGroup
+            // Напоминания по старой группе больше не нужны; новая загрузится на главном экране
+            ReminderScheduler.onGroupChanged(this)
+        }
         // Новая группа выбрана — временный просмотр больше не нужен
         settings.temporaryGroup = null
 

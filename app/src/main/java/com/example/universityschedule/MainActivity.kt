@@ -1,8 +1,13 @@
 package com.example.universityschedule
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.Gravity
 import android.view.Menu
 import android.view.MenuItem
@@ -11,6 +16,7 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.ColorRes
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -46,6 +52,20 @@ class MainActivity : AppCompatActivity() {
     private var selectedDay: Int = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     private var weekOffset = 0 // 0 - текущая неделя, 1 - следующая
 
+    // Варианты «за сколько минут напоминать»; порядок совпадает с R.array.reminder_options
+    private val reminderLeadOptions = listOf(0, 5, 10, 15, 30)
+
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                onRemindersEnabled()
+            } else {
+                settings.reminderLeadMinutes = 0
+                ReminderScheduler.reschedule(this)
+                toast(getString(R.string.reminders_permission_denied), Toast.LENGTH_LONG)
+            }
+        }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         settings = UserSettings(this)
@@ -77,6 +97,13 @@ class MainActivity : AppCompatActivity() {
         // Пустое расписание тоже показываем — иначе на экране остаются старые данные
         viewModel.weeklySchedule.observe(this) {
             updateScheduleForSelectedDay()
+        }
+
+        // Расписание своей группы (не временного просмотра) сохраняем для напоминаний
+        viewModel.loadedSchedule.observe(this) { loaded ->
+            if (Group(loaded.subgroup, Interest.fromKey(loaded.interest)) == settings.myGroup) {
+                ReminderScheduler.onScheduleLoaded(this, loaded.schedule)
+            }
         }
 
         viewModel.isLoading.observe(this) { isLoading ->
@@ -319,6 +346,7 @@ class MainActivity : AppCompatActivity() {
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         when (item.itemId) {
             R.id.menu_refresh -> refreshSchedule()
+            R.id.menu_reminders -> showRemindersDialog()
             R.id.menu_change_group -> showChangeGroupDialog()
             R.id.menu_view_other -> showOtherSchedulesDialog()
             R.id.menu_return_to_my -> returnToMyGroup()
@@ -348,6 +376,61 @@ class MainActivity : AppCompatActivity() {
             LoadError.UNKNOWN -> R.string.error_unknown
         }
     )
+
+    // ---------- Напоминания ----------
+
+    private fun showRemindersDialog() {
+        val current = reminderLeadOptions.indexOf(settings.reminderLeadMinutes).coerceAtLeast(0)
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.menu_reminders)
+            .setSingleChoiceItems(R.array.reminder_options, current) { dialog, which ->
+                dialog.dismiss()
+                setReminderLead(reminderLeadOptions[which])
+            }
+            .setNegativeButton(R.string.cancel, null)
+            .show()
+    }
+
+    private fun setReminderLead(minutes: Int) {
+        settings.reminderLeadMinutes = minutes
+
+        if (minutes == 0) {
+            ReminderScheduler.reschedule(this)
+            toast(getString(R.string.reminders_disabled))
+            return
+        }
+
+        // С Android 13 уведомления нужно разрешить явно; ответ придёт в notificationPermissionLauncher
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            return
+        }
+
+        onRemindersEnabled()
+    }
+
+    private fun onRemindersEnabled() {
+        ReminderScheduler.createChannel(this)
+        ReminderScheduler.reschedule(this)
+        toast(getString(R.string.reminders_enabled, settings.reminderLeadMinutes))
+
+        // С Android 12 точные будильники требуют отдельного разрешения; без него напоминания могут опаздывать
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !ReminderScheduler.canScheduleExact(this)) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.reminders_exact_title)
+                .setMessage(R.string.reminders_exact_message)
+                .setPositiveButton(R.string.open_settings) { _, _ ->
+                    startActivity(
+                        Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName"))
+                    )
+                }
+                .setNegativeButton(R.string.not_now, null)
+                .show()
+        }
+    }
 
     private fun showChangeGroupDialog() {
         val myGroup = settings.myGroup ?: return

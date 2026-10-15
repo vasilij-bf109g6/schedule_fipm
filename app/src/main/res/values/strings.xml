@@ -76,6 +76,26 @@
     <string name="toast_group_loaded">Загружено: %s</string>
     <string name="toast_returned_to_my_group">Вернулись к вашей группе</string>
 
+    <!-- Напоминания о парах -->
+    <string name="menu_reminders">Напоминания о парах</string>
+    <string-array name="reminder_options">
+        <item>Выключены</item>
+        <item>За 5 минут</item>
+        <item>За 10 минут</item>
+        <item>За 15 минут</item>
+        <item>За 30 минут</item>
+    </string-array>
+    <string name="reminders_channel_name">Напоминания о парах</string>
+    <string name="reminders_channel_description">Уведомление незадолго до начала пары</string>
+    <string name="reminder_title">Через %1$d мин: %2$s</string>
+    <string name="reminders_enabled">🔔 Напомним за %d мин до пары</string>
+    <string name="reminders_disabled">🔕 Напоминания выключены</string>
+    <string name="reminders_permission_denied">Без разрешения на уведомления напоминания не придут</string>
+    <string name="reminders_exact_title">Точное время напоминаний</string>
+    <string name="reminders_exact_message">Без разрешения «Будильники и напоминания» Android может присылать напоминания с опозданием на несколько минут. Открыть настройки?</string>
+    <string name="open_settings">Открыть настройки</string>
+    <string name="not_now">Не сейчас</string>
+
     <!-- Экран выбора группы -->
     <string name="welcome_title">Добро пожаловать!</string>
     <string name="welcome_choose_subgroup">Выберите подгруппу</string>

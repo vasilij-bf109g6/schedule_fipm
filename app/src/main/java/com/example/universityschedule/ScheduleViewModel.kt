@@ -23,6 +23,9 @@ class Event<out T>(private val content: T) {
 
 enum class LoadError { OFFLINE, NOT_FOUND, BAD_DATA, UNKNOWN }
 
+// Успешно загруженное расписание вместе с группой — для кэша напоминаний
+data class LoadedSchedule(val subgroup: Int, val interest: String, val schedule: Map<Int, List<UniversityClass>>)
+
 sealed class LoadResult {
     object Success : LoadResult()
     data class Failure(val error: LoadError) : LoadResult()
@@ -40,6 +43,9 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
     private val _loadResult = MutableLiveData<Event<LoadResult>>()
     val loadResult: LiveData<Event<LoadResult>> = _loadResult
 
+    private val _loadedSchedule = MutableLiveData<LoadedSchedule>()
+    val loadedSchedule: LiveData<LoadedSchedule> = _loadedSchedule
+
     private var loadJob: Job? = null
     private var loadGeneration = 0
     private var loadedKey: String? = null
@@ -56,6 +62,7 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
                 if (generation != loadGeneration) return@launch
                 loadedKey = key
                 _weeklySchedule.value = schedule
+                _loadedSchedule.value = LoadedSchedule(subgroup, interest, schedule)
                 if (userInitiated) _loadResult.value = Event(LoadResult.Success)
             } catch (e: CancellationException) {
                 throw e
