@@ -134,12 +134,10 @@
             android:layout_marginBottom="8dp"
             android:visibility="visible" />
 
-        <!-- Список пар -->
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/scheduleRecyclerView"
+        <!-- Пары выбранного дня; свайп влево/вправо — соседний день -->
+        <androidx.viewpager2.widget.ViewPager2
+            android:id="@+id/schedulePager"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            app:layoutManager="androidx.recyclerview.widget.LinearLayoutManager"
-            tools:listitem="@layout/item_class" />
+            android:layout_height="match_parent" />
     </LinearLayout>
 </LinearLayout>

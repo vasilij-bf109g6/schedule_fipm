@@ -50,6 +50,20 @@ class ScheduleLogicTest {
     }
 
     @Test
+    fun pages_coverTwoWeeksFromMonday() {
+        assertEquals(0, ScheduleLogic.pageFor(0, Calendar.MONDAY))
+        assertEquals(6, ScheduleLogic.pageFor(0, Calendar.SUNDAY))
+        assertEquals(7, ScheduleLogic.pageFor(1, Calendar.MONDAY))
+        assertEquals(13, ScheduleLogic.pageFor(1, Calendar.SUNDAY))
+
+        for (page in 0 until ScheduleLogic.PAGE_COUNT) {
+            val day = ScheduleLogic.dayForPage(page)
+            val week = ScheduleLogic.weekOffsetForPage(page)
+            assertEquals(page, ScheduleLogic.pageFor(week, day))
+        }
+    }
+
+    @Test
     fun timing_endIsExclusive() {
         val l = lesson("09:00", "10:30")
         assertEquals(ClassTiming.FUTURE, ScheduleLogic.timing(l, at("08:59")))

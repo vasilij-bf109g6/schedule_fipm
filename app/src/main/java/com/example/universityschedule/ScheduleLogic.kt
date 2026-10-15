@@ -46,6 +46,15 @@ object ScheduleLogic {
         Calendar.SUNDAY
     )
 
+    // Страницы свайпа: текущая неделя (0..6) и следующая (7..13), от понедельника
+    const val PAGE_COUNT = 14
+
+    fun pageFor(weekOffset: Int, dayOfWeek: Int): Int = weekOffset * 7 + daysFromMonday(dayOfWeek)
+
+    fun dayForPage(page: Int): Int = WEEK_DAYS[page % 7]
+
+    fun weekOffsetForPage(page: Int): Int = page / 7
+
     // "9:05" / "09:05" -> 545. Некорректная строка -> null
     fun toMinutes(time: String): Int? {
         val parts = time.trim().split(":")

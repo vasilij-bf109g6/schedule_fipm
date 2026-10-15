@@ -28,7 +28,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.RecyclerView
+import androidx.viewpager2.widget.ViewPager2
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -39,7 +39,11 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var settings: UserSettings
     private lateinit var viewModel: ScheduleViewModel
-    private val scheduleAdapter = ScheduleAdapter()
+    private lateinit var schedulePager: ViewPager2
+    private val pagerAdapter = DayPagerAdapter(
+        scheduleForDay = { day -> viewModel.getScheduleForDay(day) },
+        isTodayPage = { page -> page == ScheduleLogic.pageFor(0, currentDayOfWeek()) }
+    )
 
     private lateinit var currentClassTextView: TextView
     private lateinit var scheduleTitleTextView: TextView
@@ -85,18 +89,16 @@ class MainActivity : AppCompatActivity() {
         // Подписка на расписание включается в onStart и выключается в onStop
         viewModel = ViewModelProvider(this, ViewModelFactory(ScheduleRepository()))[ScheduleViewModel::class.java]
 
+        setupPager()
+
         btnNextWeek.setOnClickListener {
-            weekOffset = if (weekOffset == 0) 1 else 0
-            btnNextWeek.setImageResource(
-                if (weekOffset == 0) android.R.drawable.ic_media_next else android.R.drawable.ic_media_previous
-            )
-            updateDaysPanel()
-            updateScheduleForSelectedDay()
+            schedulePager.setCurrentItem(ScheduleLogic.pageFor(1 - weekOffset, selectedDay), true)
         }
 
         // Пустое расписание тоже показываем — иначе на экране остаются старые данные
         viewModel.weeklySchedule.observe(this) {
-            updateScheduleForSelectedDay()
+            pagerAdapter.refreshAll()
+            updateSelectedDayInfo()
         }
 
         // Расписание своей группы (не временного просмотра) сохраняем для напоминаний
@@ -143,7 +145,25 @@ class MainActivity : AppCompatActivity() {
         toolbarSubtitleTextView = findViewById(R.id.toolbar_subtitle)
         toolbarDateTextView = findViewById(R.id.toolbar_date)
         btnNextWeek = findViewById(R.id.btnNextWeek)
-        findViewById<RecyclerView>(R.id.scheduleRecyclerView).adapter = scheduleAdapter
+        schedulePager = findViewById(R.id.schedulePager)
+    }
+
+    // Свайп между днями: 14 страниц — текущая и следующая неделя. Выбранный день и неделя
+    // всегда берутся из текущей страницы, кнопки дней и стрелка просто листают пейджер
+    private fun setupPager() {
+        schedulePager.adapter = pagerAdapter
+        schedulePager.setCurrentItem(ScheduleLogic.pageFor(weekOffset, selectedDay), false)
+        schedulePager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                selectedDay = ScheduleLogic.dayForPage(position)
+                weekOffset = ScheduleLogic.weekOffsetForPage(position)
+                btnNextWeek.setImageResource(
+                    if (weekOffset == 0) android.R.drawable.ic_media_next else android.R.drawable.ic_media_previous
+                )
+                updateDaysPanel()
+                updateSelectedDayInfo()
+            }
+        })
     }
 
     // Изменения в Firestore приходят сразу, пока экран открыт
@@ -175,11 +195,12 @@ class MainActivity : AppCompatActivity() {
                     // Наступила полночь — «сегодня» сместилось
                     if (currentDayOfWeek() != lastDay) {
                         lastDay = currentDayOfWeek()
+                        pagerAdapter.refreshAll()
                         updateDaysPanel()
-                        updateScheduleForSelectedDay()
-                    } else if (isSelectedDayToday()) {
-                        updateCurrentClassStatus()
-                        scheduleAdapter.refreshTiming()
+                        updateSelectedDayInfo()
+                    } else {
+                        if (isSelectedDayToday()) updateCurrentClassStatus()
+                        pagerAdapter.refreshTiming()
                     }
                 }
             }
@@ -226,9 +247,7 @@ class MainActivity : AppCompatActivity() {
                     marginEnd = dpToPx(4)
                 }
                 setOnClickListener {
-                    selectedDay = day
-                    updateDaysPanel()
-                    updateScheduleForSelectedDay()
+                    schedulePager.setCurrentItem(ScheduleLogic.pageFor(weekOffset, day), true)
                 }
             }
             daysContainer.addView(dayButton)
@@ -263,9 +282,9 @@ class MainActivity : AppCompatActivity() {
 
     // ---------- Расписание и статус ----------
 
-    private fun updateScheduleForSelectedDay() {
+    // Заголовок, статус и дата для выбранного дня; сами списки пар живут на страницах пейджера
+    private fun updateSelectedDayInfo() {
         val schedule = viewModel.getScheduleForDay(selectedDay)
-        scheduleAdapter.submit(schedule, isSelectedDayToday())
 
         // Воскресенье всегда скрываем, другие дни - только если нет пар
         val isSunday = selectedDay == Calendar.SUNDAY
