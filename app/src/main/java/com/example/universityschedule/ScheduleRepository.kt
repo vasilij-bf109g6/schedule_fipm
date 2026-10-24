@@ -106,7 +106,10 @@ class ScheduleRepository {
                     teacher = classData["teacher"] as? String ?: "",
                     room = classData["room"] as? String ?: "",
                     dayOfWeek = dayOfWeek,
-                    cancelled = classData["cancelled"] as? Boolean ?: false
+                    cancelled = classData["cancelled"] as? Boolean ?: false,
+                    cancelledDates = (classData["cancelledDates"] as? List<*>)
+                        ?.filterIsInstance<String>()?.map { it.trim() }?.toSet()
+                        .orEmpty()
                 )
             }
 

@@ -1,6 +1,8 @@
 package com.example.universityschedule
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.util.Calendar
@@ -61,6 +63,39 @@ class ScheduleLogicTest {
             val week = ScheduleLogic.weekOffsetForPage(page)
             assertEquals(page, ScheduleLogic.pageFor(week, day))
         }
+    }
+
+    @Test
+    fun dateForPage_countsFromThisMonday() {
+        val today = monday("12:00").apply { add(Calendar.DAY_OF_MONTH, 2) } // среда, 14 октября
+        assertEquals("2026-10-12", ScheduleLogic.dateKey(ScheduleLogic.dateForPage(0, today)))
+        assertEquals("2026-10-14", ScheduleLogic.dateKey(ScheduleLogic.dateForPage(2, today)))
+        assertEquals("2026-10-18", ScheduleLogic.dateKey(ScheduleLogic.dateForPage(6, today)))
+        assertEquals("2026-10-19", ScheduleLogic.dateKey(ScheduleLogic.dateForPage(7, today)))
+    }
+
+    @Test
+    fun classesOn_appliesOneOffCancellationOnlyOnThatDate() {
+        val math = lessonOn(Calendar.MONDAY, "9:00", "math").copy(cancelledDates = setOf("2026-10-12"))
+        val schedule = mapOf(Calendar.MONDAY to listOf(math))
+
+        assertTrue(ScheduleLogic.classesOn(schedule, monday("08:00")).single().cancelled)
+        val nextMonday = monday("08:00").apply { add(Calendar.DAY_OF_MONTH, 7) }
+        assertFalse(ScheduleLogic.classesOn(schedule, nextMonday).single().cancelled)
+    }
+
+    @Test
+    fun nextReminder_skipsOneOffCancellation() {
+        val math = lessonOn(Calendar.MONDAY, "9:00", "math").copy(cancelledDates = setOf("2026-10-12"))
+        val schedule = mapOf(Calendar.MONDAY to listOf(math))
+
+        // Сегодняшняя пара отменена разово — напоминание будет о ней же, но через неделю
+        val reminder = ScheduleLogic.nextReminder(schedule, monday("08:00"), 15)!!
+        assertEquals(7, reminder.dayOffset)
+        // Виджет тоже показывает пару через неделю, а не отменённую сегодняшнюю
+        val widget = ScheduleLogic.widgetState(schedule, monday("08:00")) as WidgetState.Upcoming
+        assertEquals(math, widget.next.universityClass)
+        assertEquals(7, widget.next.dayOffset)
     }
 
     @Test

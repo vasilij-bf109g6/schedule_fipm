@@ -55,6 +55,26 @@ object ScheduleLogic {
 
     fun weekOffsetForPage(page: Int): Int = page / 7
 
+    // Дата страницы относительно сегодняшнего дня (время суток сохраняется)
+    fun dateForPage(page: Int, today: Calendar): Calendar = (today.clone() as Calendar).apply {
+        add(Calendar.DAY_OF_MONTH, page - daysFromMonday(today.get(Calendar.DAY_OF_WEEK)))
+    }
+
+    // "2026-10-27" — формат дат в поле cancelledDates. Без SimpleDateFormat, чтобы не зависеть от локали
+    fun dateKey(date: Calendar): String = String.format(
+        java.util.Locale.ROOT, "%04d-%02d-%02d",
+        date.get(Calendar.YEAR), date.get(Calendar.MONTH) + 1, date.get(Calendar.DAY_OF_MONTH)
+    )
+
+    // Пары дня с учётом разовых отмен на эту дату: такие пары помечаются cancelled = true,
+    // поэтому вся остальная логика (статус, напоминания, виджет) работает без изменений
+    fun classesOn(schedule: Map<Int, List<UniversityClass>>, date: Calendar): List<UniversityClass> {
+        val key = dateKey(date)
+        return schedule[date.get(Calendar.DAY_OF_WEEK)].orEmpty().map {
+            if (!it.cancelled && key in it.cancelledDates) it.copy(cancelled = true) else it
+        }
+    }
+
     // "9:05" / "09:05" -> 545. Некорректная строка -> null
     fun toMinutes(time: String): Int? {
         val parts = time.trim().split(":")
@@ -111,7 +131,7 @@ object ScheduleLogic {
                 set(Calendar.SECOND, 0)
                 set(Calendar.MILLISECOND, 0)
             }
-            val classes = activeSorted(schedule[day.get(Calendar.DAY_OF_WEEK)].orEmpty())
+            val classes = activeSorted(classesOn(schedule, day))
 
             for (universityClass in classes) {
                 val start = toMinutes(universityClass.startTime) ?: continue
@@ -127,7 +147,7 @@ object ScheduleLogic {
     }
 
     fun widgetState(schedule: Map<Int, List<UniversityClass>>, now: Calendar): WidgetState {
-        val today = schedule[now.get(Calendar.DAY_OF_WEEK)].orEmpty()
+        val today = classesOn(schedule, now)
         val status = todayStatus(today, minutesOfDay(now))
         val upcoming = upcomingClass(schedule, now)
 
@@ -142,7 +162,7 @@ object ScheduleLogic {
     // Когда виджет нужно перерисовать: ближайшее начало или конец пары сегодня, иначе полночь
     fun nextWidgetUpdate(schedule: Map<Int, List<UniversityClass>>, now: Calendar): Long {
         val nowMinutes = minutesOfDay(now)
-        val boundary = activeSorted(schedule[now.get(Calendar.DAY_OF_WEEK)].orEmpty())
+        val boundary = activeSorted(classesOn(schedule, now))
             .flatMap { listOfNotNull(toMinutes(it.startTime), toMinutes(it.endTime)) }
             .filter { it > nowMinutes }
             .minOrNull()

@@ -8,5 +8,8 @@ data class UniversityClass(
     val teacher: String,
     val room: String,
     val dayOfWeek: Int,
-    val cancelled: Boolean = false  // ← Добавляем поле
+    // Отменена на всех неделях
+    val cancelled: Boolean = false,
+    // Даты разовых отмен в формате "2026-10-27"
+    val cancelledDates: Set<String> = emptySet()
 )

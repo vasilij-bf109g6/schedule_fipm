@@ -7,7 +7,7 @@ import androidx.recyclerview.widget.RecyclerView
 // Страницы ViewPager2: по одной на день текущей и следующей недели (см. ScheduleLogic.PAGE_COUNT).
 // Каждая страница — свой список пар со своим ScheduleAdapter.
 class DayPagerAdapter(
-    private val scheduleForDay: (dayOfWeek: Int) -> List<UniversityClass>,
+    private val scheduleForPage: (page: Int) -> List<UniversityClass>,
     private val isTodayPage: (page: Int) -> Boolean
 ) : RecyclerView.Adapter<DayPagerAdapter.PageHolder>() {
 
@@ -28,7 +28,7 @@ class DayPagerAdapter(
     override fun onBindViewHolder(holder: PageHolder, position: Int) {
         boundPages.values.remove(holder)
         boundPages[position] = holder
-        holder.scheduleAdapter.submit(scheduleForDay(ScheduleLogic.dayForPage(position)), isTodayPage(position))
+        holder.scheduleAdapter.submit(scheduleForPage(position), isTodayPage(position))
     }
 
     override fun onViewRecycled(holder: PageHolder) {

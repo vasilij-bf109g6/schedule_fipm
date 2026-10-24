@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var viewModel: ScheduleViewModel
     private lateinit var schedulePager: ViewPager2
     private val pagerAdapter = DayPagerAdapter(
-        scheduleForDay = { day -> viewModel.getScheduleForDay(day) },
+        scheduleForPage = { page -> viewModel.getScheduleForDate(ScheduleLogic.dateForPage(page, Calendar.getInstance())) },
         isTodayPage = { page -> page == ScheduleLogic.pageFor(0, currentDayOfWeek()) }
     )
 
@@ -230,6 +230,10 @@ class MainActivity : AppCompatActivity() {
 
     private fun currentDayOfWeek(): Int = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
 
+    // Дата открытой страницы: нужна для разовых отмен
+    private fun selectedDate(): Calendar =
+        ScheduleLogic.dateForPage(ScheduleLogic.pageFor(weekOffset, selectedDay), Calendar.getInstance())
+
     // Тот же день недели на следующей неделе — уже не «сегодня»
     private fun isSelectedDayToday(): Boolean = weekOffset == 0 && selectedDay == currentDayOfWeek()
 
@@ -303,7 +307,7 @@ class MainActivity : AppCompatActivity() {
 
     // Заголовок, статус и дата для выбранного дня; сами списки пар живут на страницах пейджера
     private fun updateSelectedDayInfo() {
-        val schedule = viewModel.getScheduleForDay(selectedDay)
+        val schedule = viewModel.getScheduleForDate(selectedDate())
 
         // Воскресенье всегда скрываем, другие дни - только если нет пар
         val isSunday = selectedDay == Calendar.SUNDAY
@@ -314,7 +318,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateCurrentClassStatus() {
-        val schedule = viewModel.getScheduleForDay(selectedDay)
+        val schedule = viewModel.getScheduleForDate(selectedDate())
         val activeSchedule = ScheduleLogic.activeSorted(schedule)
 
         // Воскресенье — единственный выходной

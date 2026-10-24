@@ -10,6 +10,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
+import java.util.Calendar
 
 // Одноразовое событие для LiveData: тост не должен показываться повторно после поворота экрана
 class Event<out T>(private val content: T) {
@@ -115,8 +116,9 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
         }
     }
 
-    fun getScheduleForDay(dayOfWeek: Int): List<UniversityClass> {
-        return _weeklySchedule.value?.get(dayOfWeek) ?: emptyList()
+    // Пары на конкретную дату с учётом разовых отмен
+    fun getScheduleForDate(date: Calendar): List<UniversityClass> {
+        return ScheduleLogic.classesOn(_weeklySchedule.value.orEmpty(), date)
     }
 
     private fun handleUpdate(update: ScheduleUpdate, groupId: String) {

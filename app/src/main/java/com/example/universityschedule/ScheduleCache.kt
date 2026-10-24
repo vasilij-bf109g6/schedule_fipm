@@ -24,6 +24,7 @@ class ScheduleCache(context: Context) {
                         .put("teacher", item.teacher)
                         .put("room", item.room)
                         .put("cancelled", item.cancelled)
+                        .put("cancelledDates", JSONArray(item.cancelledDates.toList()))
                 )
             }
             days.put(day.toString(), items)
@@ -48,7 +49,10 @@ class ScheduleCache(context: Context) {
                         teacher = item.optString("teacher"),
                         room = item.optString("room"),
                         dayOfWeek = day,
-                        cancelled = item.optBoolean("cancelled")
+                        cancelled = item.optBoolean("cancelled"),
+                        cancelledDates = item.optJSONArray("cancelledDates")?.let { dates ->
+                            (0 until dates.length()).map { dates.optString(it) }.toSet()
+                        }.orEmpty()
                     )
                 }
             }
