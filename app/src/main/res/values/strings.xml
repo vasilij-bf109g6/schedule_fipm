@@ -5,7 +5,6 @@
     <string name="interest_readers">Чтецы</string>
     <string name="interest_singers">Певцы</string>
     <string name="group_short">Гр.%1$d %2$s</string>
-    <string name="group_full">Подгруппа %1$d, %2$s</string>
     <string name="group_list_item">Подгруппа %1$d - %2$s</string>
 
     <!-- Главный экран -->
@@ -110,7 +109,7 @@
 
     <!-- Экран выбора группы -->
     <string name="welcome_title">Добро пожаловать!</string>
-    <string name="welcome_choose_subgroup">Выберите подгруппу</string>
+    <string name="welcome_choose_group">Выберите группу</string>
     <string name="welcome_continue">Продолжить</string>
     <string name="welcome_footer_faculty">ФИПМ</string>
     <string name="welcome_footer_course">1 курс</string>

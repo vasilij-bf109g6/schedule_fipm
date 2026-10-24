@@ -74,7 +74,7 @@ object ScheduleWidget {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.widget_root, openApp)
-        views.setTextViewText(R.id.widget_group, UserSettings(context).myGroup?.shortName(context).orEmpty())
+        views.setTextViewText(R.id.widget_group, UserSettings(context).myGroup?.shortName.orEmpty())
         views.setViewVisibility(R.id.widget_next, View.GONE)
 
         if (!hasData) {

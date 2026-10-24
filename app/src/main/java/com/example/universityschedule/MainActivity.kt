@@ -56,6 +56,9 @@ class MainActivity : AppCompatActivity() {
     private var selectedDay: Int = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
     private var weekOffset = 0 // 0 - текущая неделя, 1 - следующая
 
+    // Группы для «Посмотреть другие»: встроенный список, пока не загрузился список из Firestore
+    private var availableGroups: List<Group> = emptyList()
+
     // Варианты «за сколько минут напоминать»; порядок совпадает с R.array.reminder_options
     private val reminderLeadOptions = listOf(0, 5, 10, 15, 30)
 
@@ -103,7 +106,7 @@ class MainActivity : AppCompatActivity() {
 
         // Расписание своей группы (не временного просмотра) сохраняем для напоминаний
         viewModel.loadedSchedule.observe(this) { loaded ->
-            if (Group(loaded.subgroup, Interest.fromKey(loaded.interest)) == settings.myGroup) {
+            if (loaded.groupId == settings.myGroup?.id) {
                 ReminderScheduler.onScheduleLoaded(this, loaded.schedule)
             }
         }
@@ -123,6 +126,20 @@ class MainActivity : AppCompatActivity() {
         }
 
         startMinuteTicker()
+        loadGroups()
+    }
+
+    private fun loadGroups() {
+        availableGroups = defaultGroups(this)
+        lifecycleScope.launch {
+            ScheduleRepository().loadGroups()?.let { loaded ->
+                availableGroups = loaded
+                // Группу переименовали в Firestore — показываем новое название
+                settings.updateNames(loaded)
+                updateToolbar()
+                ScheduleWidget.updateAll(this@MainActivity)
+            }
+        }
     }
 
     override fun onStart() {
@@ -169,7 +186,7 @@ class MainActivity : AppCompatActivity() {
     // Изменения в Firestore приходят сразу, пока экран открыт
     private fun watchActiveGroup() {
         val group = settings.activeGroup ?: return
-        viewModel.watchSchedule(group.subgroup, group.interest.key)
+        viewModel.watchSchedule(group.id)
     }
 
     // «Загрузка…», «Расписание (оффлайн)» — если данные из кэша, или обычный заголовок
@@ -362,7 +379,7 @@ class MainActivity : AppCompatActivity() {
     // ---------- Toolbar ----------
 
     private fun updateToolbar() {
-        toolbarSubtitleTextView.text = settings.activeGroup?.shortName(this).orEmpty()
+        toolbarSubtitleTextView.text = settings.activeGroup?.shortName.orEmpty()
         updateToolbarDate()
     }
 
@@ -401,7 +418,7 @@ class MainActivity : AppCompatActivity() {
         toast(getString(if (isTemporary) R.string.refresh_started_temporary else R.string.refresh_started_mine))
         // Результат придёт в наблюдатель viewModel.loadResult
         val group = settings.activeGroup ?: return
-        viewModel.refresh(group.subgroup, group.interest.key)
+        viewModel.refresh(group.id)
     }
 
     private fun getReadableError(error: LoadError): String = getString(
@@ -473,7 +490,7 @@ class MainActivity : AppCompatActivity() {
 
         AlertDialog.Builder(this)
             .setTitle(R.string.menu_change_group)
-            .setMessage(getString(R.string.dialog_change_group_message, myGroup.fullName(this)))
+            .setMessage(getString(R.string.dialog_change_group_message, myGroup.name))
             .setPositiveButton(R.string.menu_change_group) { _, _ ->
                 startActivity(Intent(this, WelcomeActivity::class.java))
                 finish()
@@ -483,17 +500,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showOtherSchedulesDialog() {
-        val groups = Group.ALL
-        val titles = groups.map {
-            getString(R.string.group_list_item, it.subgroup, getString(it.interest.titleRes))
-        }.toTypedArray()
+        val groups = availableGroups
+        val titles = groups.map { it.name }.toTypedArray()
 
         AlertDialog.Builder(this)
             .setTitle(R.string.dialog_other_groups_title)
             .setItems(titles) { _, which ->
                 val group = groups[which]
 
-                if (group == settings.myGroup) {
+                if (group.isSameAs(settings.myGroup)) {
                     // Из временного просмотра выбор своей группы возвращает к ней
                     if (settings.temporaryGroup != null) {
                         returnToMyGroup()
@@ -507,7 +522,7 @@ class MainActivity : AppCompatActivity() {
                 invalidateOptionsMenu()
                 updateToolbar()
                 watchActiveGroup()
-                toast(getString(R.string.toast_group_loaded, group.fullName(this)))
+                toast(getString(R.string.toast_group_loaded, group.name))
             }
             .setNegativeButton(R.string.cancel, null)
             .show()

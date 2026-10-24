@@ -25,7 +25,7 @@ class Event<out T>(private val content: T) {
 enum class LoadError { OFFLINE, NOT_FOUND, BAD_DATA, UNKNOWN }
 
 // Успешно загруженное расписание вместе с группой — для кэша напоминаний и виджета
-data class LoadedSchedule(val subgroup: Int, val interest: String, val schedule: Map<Int, List<UniversityClass>>)
+data class LoadedSchedule(val groupId: String, val schedule: Map<Int, List<UniversityClass>>)
 
 sealed class LoadResult {
     object Success : LoadResult()
@@ -59,8 +59,8 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
     private var lastError: LoadError? = null
 
     // Подписаться на расписание группы. Повторный вызов для той же группы ничего не делает
-    fun watchSchedule(subgroup: Int, interest: String) {
-        val key = "${subgroup}_$interest"
+    fun watchSchedule(groupId: String) {
+        val key = groupId
         if (key == watchedKey && watchJob?.isActive == true) return
 
         watchJob?.cancel()
@@ -75,13 +75,13 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
         _isLoading.value = true
 
         watchJob = viewModelScope.launch {
-            repository.observeSchedule(subgroup, interest)
+            repository.observeSchedule(groupId)
                 .catch { e ->
                     Log.e("ScheduleVM", "Подписка на расписание $key оборвалась", e)
                     _isLoading.value = false
                     reportError((e as? Exception)?.toLoadError() ?: LoadError.UNKNOWN)
                 }
-                .collect { update -> handleUpdate(update, subgroup, interest) }
+                .collect { update -> handleUpdate(update, groupId) }
         }
     }
 
@@ -92,16 +92,16 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
     }
 
     // Ручное обновление: запрос прямо к серверу. Подписка при этом продолжает работать
-    fun refresh(subgroup: Int, interest: String) {
-        val key = "${subgroup}_$interest"
+    fun refresh(groupId: String) {
+        val key = groupId
         _isLoading.value = true
 
         viewModelScope.launch {
             try {
-                val schedule = repository.fetchFromServer(subgroup, interest)
+                val schedule = repository.fetchFromServer(groupId)
                 if (key == watchedKey) {
                     _isFromCache.value = false
-                    publish(schedule, subgroup, interest)
+                    publish(schedule, groupId)
                 }
                 _loadResult.value = Event(LoadResult.Success)
             } catch (e: CancellationException) {
@@ -119,13 +119,13 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
         return _weeklySchedule.value?.get(dayOfWeek) ?: emptyList()
     }
 
-    private fun handleUpdate(update: ScheduleUpdate, subgroup: Int, interest: String) {
+    private fun handleUpdate(update: ScheduleUpdate, groupId: String) {
         _isLoading.value = false
         when (update) {
             is ScheduleUpdate.Loaded -> {
                 lastError = null
                 _isFromCache.value = update.fromCache
-                publish(update.schedule, subgroup, interest)
+                publish(update.schedule, groupId)
             }
             is ScheduleUpdate.Missing -> {
                 _isFromCache.value = update.fromCache
@@ -139,13 +139,13 @@ class ScheduleViewModel(private val repository: ScheduleRepository) : ViewModel(
         }
     }
 
-    private fun publish(schedule: Map<Int, List<UniversityClass>>, subgroup: Int, interest: String) {
-        val key = "${subgroup}_$interest"
+    private fun publish(schedule: Map<Int, List<UniversityClass>>, groupId: String) {
+        val key = groupId
         if (key == publishedKey && schedule == _weeklySchedule.value) return
         Log.d("ScheduleVM", "Расписание $key обновлено: ${schedule.size} дней")
         publishedKey = key
         _weeklySchedule.value = schedule
-        _loadedSchedule.value = LoadedSchedule(subgroup, interest, schedule)
+        _loadedSchedule.value = LoadedSchedule(groupId, schedule)
     }
 
     private fun reportError(error: LoadError) {

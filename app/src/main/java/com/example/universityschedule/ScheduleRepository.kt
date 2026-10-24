@@ -27,13 +27,21 @@ class ScheduleRepository {
 
     private val db = Firebase.firestore
 
-    private fun document(subgroup: Int, interest: String) =
-        db.collection("schedules").document("${subgroup}_$interest")
+    private fun document(groupId: String) = db.collection("schedules").document(groupId)
+
+    // Список групп из config/groups. Без сети Firestore вернёт сохранённую копию;
+    // null — списка нет ни на сервере, ни в кэше: тогда приложение показывает встроенный
+    suspend fun loadGroups(): List<Group>? = try {
+        Groups.parse(db.collection("config").document("groups").get().await().get("groups"))
+    } catch (e: Exception) {
+        Log.w("Firestore", "Не удалось загрузить список групп", e)
+        null
+    }
 
     // Подписка на документ: первое значение приходит из кэша почти сразу, дальше — каждое изменение на сервере.
     // MetadataChanges.INCLUDE нужен, чтобы узнать о переходе «кэш → сервер», даже если данные не изменились.
-    fun observeSchedule(subgroup: Int, interest: String): Flow<ScheduleUpdate> = callbackFlow {
-        val registration = document(subgroup, interest)
+    fun observeSchedule(groupId: String): Flow<ScheduleUpdate> = callbackFlow {
+        val registration = document(groupId)
             .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
                 if (error != null) {
                     close(error)
@@ -53,11 +61,10 @@ class ScheduleRepository {
     }
 
     // Ручное обновление: идём именно на сервер, мимо кэша
-    suspend fun fetchFromServer(subgroup: Int, interest: String): Map<Int, List<UniversityClass>> {
-        val docId = "${subgroup}_$interest"
-        val snapshot = document(subgroup, interest).get(Source.SERVER).await()
-        if (!snapshot.exists()) throw ScheduleNotFoundException(docId)
-        return parse(snapshot) ?: throw InvalidScheduleException(docId)
+    suspend fun fetchFromServer(groupId: String): Map<Int, List<UniversityClass>> {
+        val snapshot = document(groupId).get(Source.SERVER).await()
+        if (!snapshot.exists()) throw ScheduleNotFoundException(groupId)
+        return parse(snapshot) ?: throw InvalidScheduleException(groupId)
     }
 
     // null — документ заполнен с ошибкой
