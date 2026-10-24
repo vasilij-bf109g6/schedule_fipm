@@ -127,6 +127,8 @@ class MainActivity : AppCompatActivity() {
 
         startMinuteTicker()
         loadGroups()
+        // Раз в несколько часов обновляем сохранённое расписание в фоне (для напоминаний и виджета)
+        ScheduleSyncWorker.schedule(this)
     }
 
     private fun loadGroups() {

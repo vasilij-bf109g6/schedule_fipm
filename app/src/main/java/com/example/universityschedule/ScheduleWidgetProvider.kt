@@ -33,6 +33,11 @@ object ScheduleWidget {
 
     const val ACTION_REFRESH = "com.example.universityschedule.action.WIDGET_REFRESH"
 
+    fun hasWidgets(context: Context): Boolean {
+        val manager = AppWidgetManager.getInstance(context) ?: return false
+        return manager.getAppWidgetIds(ComponentName(context, ScheduleWidgetProvider::class.java)).isNotEmpty()
+    }
+
     fun updateAll(context: Context) {
         val manager = AppWidgetManager.getInstance(context) ?: return
         val ids = manager.getAppWidgetIds(ComponentName(context, ScheduleWidgetProvider::class.java))
